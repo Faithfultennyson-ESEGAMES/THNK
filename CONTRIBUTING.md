@@ -57,11 +57,12 @@ The GDevelop extensions are contained in `extensions`. You can install the lates
 ## Building - Test your changes
 
 You will need the following tools to build THNK:
-- NodeJS (Preferably v16 LTS)
-- Yarn
+
+- Node.js 18.20.x (18.20.8 is pinned in `.nvmrc` and `.node-version`)
+- Yarn 1.22.x (1.22.22 is pinned in `package.json`)
 - A system that can run FlatBuffer's `flatc`
 
-When you first download the repository, you will need to install dependencies by running `yarn`. Remember to run it again regularely to ensure you are using the same version and dependencies as everyone else!
+When you first download the repository, activate the pinned Node version and run `corepack enable` if Yarn is not already available. Install dependencies with `yarn install --frozen-lockfile`. Run it again whenever `yarn.lock` changes.
 
 To launch a full build of THNK, run `yarn build`. You can also run the build step-by-step:
 
@@ -74,7 +75,7 @@ After building, reimport the THNK extensions in GDevelop from your `extensions` 
 
 ## Testing - Prepare your code for submission
 
-Before making a commit, you should verify your code is not broken by checking for TypeScript errors (`yarn tsc`) and running the unit tests (`yarn test`). If those do not pass, your contribution is likely breaking something!
+Before making a commit, verify the code by checking for TypeScript errors (`yarn ts`) and running the unit tests (`yarn test`). If those do not pass, your contribution is likely breaking something!
 
 Additionally, run `yarn format` and `yarn build` before committing. This ensures the code stays readable and that the extensions files are up-to-date with the latest version of your code.
 

@@ -2,12 +2,17 @@
   "name": "thnk",
   "private": true,
   "version": "1.0.0",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
+  "packageManager": "yarn@1.22.22",
+  "engines": {
+    "node": "18.20.x",
+    "yarn": "1.22.x"
+  },
   "workspaces": [
     "code/*"
   ],
   "scripts": {
-    "postinstall": "npm run generate-protocol",
+    "postinstall": "node ./scripts/generate-protocol.js",
     "test": "jest",
     "ts": "tsc",
     "format": "prettier --write ./code/**/* ./scripts/*.js",
@@ -18,7 +23,7 @@
     "build:adapters": "tsup ./code/adapters/*.ts --format iife && tsup ./code/adapters/geckos-server.ts --minify --format cjs",
     "build:extensions": "node ./scripts/generate-extensions.js",
     "build:clean": "node -e \"fs.promises.rm('./dist', {recursive:true,force:true})\"",
-    "build": "npm run build:clean && npm run generate-protocol && npm run build:thnk && npm run build:adapters && npm run build:extensions"
+    "build": "yarn build:clean && yarn generate-protocol && yarn build:thnk && yarn build:adapters && yarn build:extensions"
   },
   "devDependencies": {
     "@geckos.io/client": "^2.2.3",
