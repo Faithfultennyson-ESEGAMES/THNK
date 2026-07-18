@@ -94,6 +94,12 @@ Feature work begins only after we can:
 
 ### M1 — Remote authoritative vertical slice
 
+**Implementation status (2026-07-18):** The local separate-process vertical
+slice is complete on `platform/m1-remote-authority`; fixture, runtime check,
+lifecycle regressions, and results are recorded in
+`docs/project/M1-REMOTE-AUTHORITY.md`. A second-machine or isolated-network run
+remains before the remote-environment gate is closed.
+
 **Work**
 
 - Create a minimal GDevelop fixture with a synchronized player object, `State.Score`, server-side movement, and client input.

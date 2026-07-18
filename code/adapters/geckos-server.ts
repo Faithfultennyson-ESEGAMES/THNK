@@ -22,6 +22,7 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
   httpServer: import("http").Server | null = null;
   channels = new Map<string, ServerChannel>();
   serverID = `${getSomeNums()}-server-${getSomeNums()}`;
+  beforeUnloadHandler: ((event: BeforeUnloadEvent) => void) | null = null;
   constructor(port: number) {
     super();
     this.port = port;
@@ -140,38 +141,56 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
       logger.error("HTTP server client-error! ", err)
     );
     this.server.addServer(this.httpServer);
-    this.httpServer.listen(this.port);
+    await new Promise<void>((resolve, reject) => {
+      const onStartupError = (error: Error) => {
+        this.httpServer?.off("listening", onListening);
+        reject(error);
+      };
+      const onListening = () => {
+        this.httpServer?.off("error", onStartupError);
+        resolve();
+      };
+
+      this.httpServer!.once("error", onStartupError);
+      this.httpServer!.once("listening", onListening);
+      this.httpServer!.listen(this.port);
+    });
 
     // Force close the server when closing the preview window
-    const close = (e: BeforeUnloadEvent) => {
+    this.beforeUnloadHandler = (e: BeforeUnloadEvent) => {
       e.returnValue = "false";
       this.close();
-      window.removeEventListener("beforeunload", close);
       window.close();
     };
-    window.addEventListener("beforeunload", close);
+    window.addEventListener("beforeunload", this.beforeUnloadHandler);
   }
 
   close() {
-    if (this.server && this.httpServer) {
-      this.httpServer.close();
-      if (this.httpServer.closeAllConnections)
-        this.httpServer.closeAllConnections();
-      // Close current connections
-      for (const connection of this.channels.values()) connection.close();
-      // Clear everything out for GC
-      this.channels.clear();
-      // Close the HTTP server
-      this.httpServer = null;
-      this.server = null;
+    if (this.beforeUnloadHandler) {
+      window.removeEventListener("beforeunload", this.beforeUnloadHandler);
+      this.beforeUnloadHandler = null;
     }
+
+    const httpServer = this.httpServer;
+    this.httpServer = null;
+    this.server = null;
+
+    for (const connection of this.channels.values()) connection.close();
+    this.channels.clear();
+
+    if (!httpServer) return;
+    if (httpServer.closeAllConnections) httpServer.closeAllConnections();
+    if (httpServer.listening) httpServer.close();
   }
 
   protected doSendMessageTo(userID: string, message: Uint8Array): void {
     const connection = this.channels.get(userID);
     if (connection) {
       connection.raw.emit(
-        message.buffer.slice(message.buffer.byteLength - message.byteLength)
+        message.buffer.slice(
+          message.byteOffset,
+          message.byteOffset + message.byteLength
+        )
       );
     }
   }

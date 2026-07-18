@@ -2,7 +2,7 @@
 let DEDICATED = false;
 
 /** The amount of target ticks per second. */
-let TICK_RATE = 120; // TODO set to lower (20?) when that becomes a possibility.
+let TICK_RATE = 20;
 
 export const setDedicated = () => {
   DEDICATED = true;

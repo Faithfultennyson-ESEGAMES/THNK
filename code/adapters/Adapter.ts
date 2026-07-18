@@ -83,20 +83,29 @@ export abstract class ServerAdapter {
   /** Override to send an Uint8Array to all the clients. */
   protected abstract doSendMessageTo(userID: string, message: Uint8Array): void;
   /** Call this whenever the server/client has sent a message. */
-  protected onMessage(userID: string, bytes: Uint8Array): void {
-    this.usersPendingMessages
-      .get(userID)!
-      .push(
-        ClientMessage.getRootAsClientMessage(new ByteBuffer(decompress(bytes)))
-      );
+  protected onMessage(userID: string, bytes: Uint8Array): boolean {
+    const pendingMessages = this.usersPendingMessages.get(userID);
+    // A transport can deliver a final packet after its disconnect callback.
+    // Ignore it instead of crashing the server tick with a missing queue.
+    if (!pendingMessages) return false;
+
+    pendingMessages.push(
+      ClientMessage.getRootAsClientMessage(new ByteBuffer(decompress(bytes)))
+    );
+    return true;
   }
   /** Call this whenever a client connects. */
-  protected onConnection(userID: string) {
+  protected onConnection(userID: string): boolean {
+    // Duplicate transport callbacks must not discard already queued input.
+    if (this.usersPendingMessages.has(userID)) return false;
     this.usersPendingMessages.set(userID, []);
+    return true;
   }
   /** Call this whenever a client disconnects. */
-  protected onDisconnection(userID: string) {
-    this.usersPendingMessages.delete(userID);
+  protected onDisconnection(userID: string): boolean {
+    // Only report a real connected -> disconnected transition once.
+    if (!this.usersPendingMessages.delete(userID)) return false;
     this.disconnectedUsers.push(userID);
+    return true;
   }
 }

@@ -11,7 +11,6 @@ import { setupSceneAsServer } from "server/SetupServerScene";
 import { ServerAdapter } from "adapters/Adapter";
 
 const logger = new gdjs.Logger("THNK - Server");
-let timer = 0;
 const runServerTickPreEvent = (runtimeScene: gdjs.RuntimeScene) => {
   if (!runtimeScene.thnkServer) return;
 
@@ -53,9 +52,10 @@ const runServerTickPreEvent = (runtimeScene: gdjs.RuntimeScene) => {
 
   const timeManager = runtimeScene.getTimeManager();
   // Note that while this is affected by the time scale
-  timer += timeManager.getElapsedTime() / timeManager.getTimeScale();
-  if (timer > 1000 / getTickRate()) {
-    timer = 0;
+  runtimeScene.thnkServer.tickTimer +=
+    timeManager.getElapsedTime() / timeManager.getTimeScale();
+  if (runtimeScene.thnkServer.tickTimer > 1000 / getTickRate()) {
+    runtimeScene.thnkServer.tickTimer = 0;
     runtimeScene.thnkServer.runServerCode = true;
   }
 

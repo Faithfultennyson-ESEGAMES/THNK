@@ -18,14 +18,13 @@ export const startServer = async (
     await adapter.prepare(runtimeScene);
   } catch (e) {
     logger.error("Adapter crashed while starting server! Error: ", e);
+    adapter.close();
     // Abort server startup
     return;
   }
 
   const game = runtimeScene.getGame();
-  const scene = sceneName
-    ? await loadScene(game, sceneName)
-    : runtimeScene;
+  const scene = sceneName ? await loadScene(game, sceneName) : runtimeScene;
 
   // The scene setup will allow for the adapter to be bound to it and the server lifetime events to apply to it.
   setupSceneAsServer(scene, adapter);

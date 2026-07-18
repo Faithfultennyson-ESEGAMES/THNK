@@ -16,3 +16,4 @@ const events = {
 export { events };
 
 export { startServer } from "server/StartServer";
+export { closeServer } from "server/CloseServer";

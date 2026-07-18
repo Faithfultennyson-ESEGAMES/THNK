@@ -21,6 +21,8 @@ export class THNKServerContext {
   playerManager = new PlayerManager();
   /** Set to true to run a server tick on the next frame. */
   runServerCode: boolean = true;
+  /** Elapsed milliseconds accumulated toward the next server tick. */
+  tickTimer = 0;
   /** List of users that already know this scene, used when unpausing a scene to only send a snapshot to those who do not have it in memory already. */
   previouslyConnectedUsers?: Set<string>;
   /** Stores snapshots of the diffs of a hanful of previous frames. */

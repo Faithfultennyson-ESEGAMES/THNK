@@ -1,0 +1,494 @@
+{
+  "firstLayout": "ClientBootstrap",
+  "gdVersion": {
+    "build": 99,
+    "major": 4,
+    "minor": 0,
+    "revision": 0
+  },
+  "properties": {
+    "adaptGameResolutionAtRuntime": false,
+    "folderProject": false,
+    "orientation": "default",
+    "packageName": "com.thnk.m1authority",
+    "pixelsRounding": false,
+    "projectUuid": "c5bb6fbd-08a1-48a6-b96f-722d11c13e51",
+    "scaleMode": "linear",
+    "sizeOnStartupMode": "",
+    "useExternalSourceFiles": false,
+    "version": "1.0.0",
+    "name": "THNK M1 Remote Authority",
+    "author": "THNK contributors",
+    "windowWidth": 800,
+    "windowHeight": 600,
+    "latestCompilationDirectory": "",
+    "maxFPS": 60,
+    "minFPS": 10,
+    "verticalSync": false,
+    "platformSpecificAssets": {},
+    "loadingScreen": {
+      "backgroundColor": 2236962,
+      "backgroundFadeInDuration": 0,
+      "backgroundImageResourceName": "",
+      "gdevelopLogoStyle": "light",
+      "logoAndProgressFadeInDuration": 0,
+      "logoAndProgressLogoFadeInDelay": 0,
+      "minDuration": 0,
+      "progressBarColor": 16777215,
+      "progressBarHeight": 20,
+      "progressBarMaxWidth": 200,
+      "progressBarMinWidth": 40,
+      "progressBarWidthPercent": 30,
+      "showGDevelopSplash": false,
+      "showProgressBar": true
+    },
+    "authorIds": [],
+    "extensionProperties": [],
+    "platforms": [{ "name": "GDevelop JS platform" }],
+    "currentPlatform": "GDevelop JS platform"
+  },
+  "resources": { "resources": [], "resourceFolders": [] },
+  "objects": [],
+  "objectsGroups": [],
+  "variables": [],
+  "layouts": [
+    {
+      "b": 32,
+      "disableInputWhenNotFocused": false,
+      "mangledName": "ClientBootstrap",
+      "name": "ClientBootstrap",
+      "oglFOV": 90,
+      "oglZFar": 500,
+      "oglZNear": 1,
+      "r": 32,
+      "standardSortMethod": true,
+      "stopSoundsOnStartup": true,
+      "title": "",
+      "v": 32,
+      "uiSettings": {},
+      "objectsGroups": [],
+      "variables": [],
+      "instances": [],
+      "objects": [],
+      "events": [
+        {
+          "disabled": false,
+          "folded": false,
+          "type": "BuiltinCommonInstructions::Standard",
+          "conditions": [
+            {
+              "type": { "inverted": false, "value": "SceneJustBegins" },
+              "parameters": [""],
+              "subInstructions": []
+            }
+          ],
+          "actions": [
+            {
+              "type": {
+                "inverted": false,
+                "value": "THNK_GeckosClient::ConnectToServer"
+              },
+              "parameters": ["", "\"127.0.0.1\"", "9208"],
+              "subInstructions": []
+            }
+          ],
+          "events": []
+        }
+      ],
+      "layers": [
+        {
+          "ambientLightColorB": 200,
+          "ambientLightColorG": 200,
+          "ambientLightColorR": 200,
+          "followBaseLayerCamera": false,
+          "isLightingLayer": false,
+          "name": "",
+          "visibility": true,
+          "cameras": [
+            {
+              "defaultSize": true,
+              "defaultViewport": true,
+              "height": 0,
+              "viewportBottom": 1,
+              "viewportLeft": 0,
+              "viewportRight": 1,
+              "viewportTop": 0,
+              "width": 0
+            }
+          ],
+          "effects": []
+        }
+      ],
+      "behaviorsSharedData": []
+    },
+    {
+      "b": 32,
+      "disableInputWhenNotFocused": false,
+      "mangledName": "ServerBootstrap",
+      "name": "ServerBootstrap",
+      "oglFOV": 90,
+      "oglZFar": 500,
+      "oglZNear": 1,
+      "r": 32,
+      "standardSortMethod": true,
+      "stopSoundsOnStartup": true,
+      "title": "",
+      "v": 32,
+      "uiSettings": {},
+      "objectsGroups": [],
+      "variables": [],
+      "instances": [],
+      "objects": [],
+      "events": [
+        {
+          "disabled": false,
+          "folded": false,
+          "type": "BuiltinCommonInstructions::JsCode",
+          "inlineCode": "THNK.settings.setDedicated();",
+          "parameterObjects": "",
+          "useStrict": true,
+          "eventsSheetExpanded": false
+        },
+        {
+          "disabled": false,
+          "folded": false,
+          "type": "BuiltinCommonInstructions::Standard",
+          "conditions": [
+            {
+              "type": { "inverted": false, "value": "SceneJustBegins" },
+              "parameters": [""],
+              "subInstructions": []
+            }
+          ],
+          "actions": [
+            {
+              "type": {
+                "inverted": false,
+                "value": "THNK_GeckosServer::HostServer"
+              },
+              "parameters": ["", "9208", "\"Authority\""],
+              "subInstructions": []
+            }
+          ],
+          "events": []
+        }
+      ],
+      "layers": [
+        {
+          "ambientLightColorB": 200,
+          "ambientLightColorG": 200,
+          "ambientLightColorR": 200,
+          "followBaseLayerCamera": false,
+          "isLightingLayer": false,
+          "name": "",
+          "visibility": true,
+          "cameras": [
+            {
+              "defaultSize": true,
+              "defaultViewport": true,
+              "height": 0,
+              "viewportBottom": 1,
+              "viewportLeft": 0,
+              "viewportRight": 1,
+              "viewportTop": 0,
+              "width": 0
+            }
+          ],
+          "effects": []
+        }
+      ],
+      "behaviorsSharedData": []
+    },
+    {
+      "b": 38,
+      "disableInputWhenNotFocused": false,
+      "mangledName": "Authority",
+      "name": "Authority",
+      "oglFOV": 90,
+      "oglZFar": 500,
+      "oglZNear": 1,
+      "r": 38,
+      "standardSortMethod": true,
+      "stopSoundsOnStartup": true,
+      "title": "",
+      "v": 38,
+      "uiSettings": {},
+      "objectsGroups": [
+        { "name": "Players", "objects": [{ "name": "Player" }] }
+      ],
+      "variables": [
+        {
+          "name": "State",
+          "type": "structure",
+          "children": [{ "name": "Score", "type": "number", "value": 0 }]
+        },
+        { "name": "Input", "type": "structure", "children": [] }
+      ],
+      "instances": [],
+      "objects": [
+        {
+          "bold": true,
+          "italic": false,
+          "name": "Player",
+          "smoothed": true,
+          "tags": "",
+          "type": "TextObject::Text",
+          "underlined": false,
+          "variables": [],
+          "effects": [],
+          "behaviors": [
+            { "name": "SynchronizedObject", "type": "THNK::SynchronizedObject" }
+          ],
+          "string": "PLAYER",
+          "font": "",
+          "characterSize": 28,
+          "color": { "b": 255, "g": 255, "r": 255 }
+        }
+      ],
+      "events": [
+        {
+          "disabled": false,
+          "folded": false,
+          "type": "BuiltinCommonInstructions::Comment",
+          "color": {
+            "b": 109,
+            "g": 230,
+            "r": 255,
+            "textB": 0,
+            "textG": 0,
+            "textR": 0
+          },
+          "comment": "CLIENT: input is sent as a message; local edits are intentionally not authoritative.",
+          "comment2": ""
+        },
+        {
+          "disabled": false,
+          "folded": false,
+          "type": "BuiltinCommonInstructions::Standard",
+          "conditions": [
+            {
+              "type": { "inverted": false, "value": "THNK::StartClientCode" },
+              "parameters": [""],
+              "subInstructions": []
+            },
+            {
+              "type": { "inverted": false, "value": "KeyPressed" },
+              "parameters": ["", "Right"],
+              "subInstructions": []
+            }
+          ],
+          "actions": [
+            {
+              "type": { "inverted": false, "value": "THNK::SendMessage" },
+              "parameters": ["", "\"MoveRight\"", "Input"],
+              "subInstructions": []
+            }
+          ],
+          "events": []
+        },
+        {
+          "disabled": false,
+          "folded": false,
+          "type": "BuiltinCommonInstructions::Standard",
+          "conditions": [
+            {
+              "type": { "inverted": false, "value": "THNK::StartClientCode" },
+              "parameters": [""],
+              "subInstructions": []
+            },
+            {
+              "type": { "inverted": false, "value": "KeyPressed" },
+              "parameters": ["", "Space"],
+              "subInstructions": []
+            }
+          ],
+          "actions": [
+            {
+              "type": { "inverted": false, "value": "SetX" },
+              "parameters": ["Player", "+", "1000"],
+              "subInstructions": []
+            },
+            {
+              "type": { "inverted": false, "value": "ModVarScene" },
+              "parameters": ["State.Score", "=", "999"],
+              "subInstructions": []
+            }
+          ],
+          "events": []
+        },
+        {
+          "disabled": false,
+          "folded": false,
+          "type": "BuiltinCommonInstructions::Comment",
+          "color": {
+            "b": 109,
+            "g": 230,
+            "r": 255,
+            "textB": 0,
+            "textG": 0,
+            "textR": 0
+          },
+          "comment": "SERVER: joins create owned players and increment State.Score.",
+          "comment2": ""
+        },
+        {
+          "disabled": false,
+          "folded": false,
+          "type": "BuiltinCommonInstructions::Standard",
+          "conditions": [
+            {
+              "type": { "inverted": false, "value": "THNK::StartServerCode" },
+              "parameters": [""],
+              "subInstructions": []
+            },
+            {
+              "type": { "inverted": false, "value": "THNK::OnClientConnect" },
+              "parameters": [""],
+              "subInstructions": []
+            }
+          ],
+          "actions": [
+            {
+              "type": { "inverted": false, "value": "CreateByName" },
+              "parameters": [
+                "",
+                "Players",
+                "\"Player\"",
+                "96 + State.Score * 96",
+                "240",
+                ""
+              ],
+              "subInstructions": []
+            },
+            {
+              "type": {
+                "inverted": false,
+                "value": "THNK::LinkObjectToPlayer"
+              },
+              "parameters": ["", "Player"],
+              "subInstructions": []
+            },
+            {
+              "type": { "inverted": false, "value": "ModVarScene" },
+              "parameters": ["State.Score", "+", "1"],
+              "subInstructions": []
+            }
+          ],
+          "events": []
+        },
+        {
+          "disabled": false,
+          "folded": false,
+          "type": "BuiltinCommonInstructions::Standard",
+          "conditions": [
+            {
+              "type": { "inverted": false, "value": "THNK::StartServerCode" },
+              "parameters": [""],
+              "subInstructions": []
+            },
+            {
+              "type": { "inverted": false, "value": "THNK::OnMessage" },
+              "parameters": ["", "\"MoveRight\"", "Input"],
+              "subInstructions": []
+            },
+            {
+              "type": { "inverted": false, "value": "THNK::UseLinkedObjects" },
+              "parameters": ["", "Player"],
+              "subInstructions": []
+            }
+          ],
+          "actions": [
+            {
+              "type": { "inverted": false, "value": "SetX" },
+              "parameters": ["Player", "+", "24"],
+              "subInstructions": []
+            }
+          ],
+          "events": []
+        },
+        {
+          "disabled": false,
+          "folded": false,
+          "type": "BuiltinCommonInstructions::Comment",
+          "color": {
+            "b": 109,
+            "g": 230,
+            "r": 255,
+            "textB": 0,
+            "textG": 0,
+            "textR": 0
+          },
+          "comment": "SERVER: leave/abrupt disconnect deletes the owned player and decrements score.",
+          "comment2": ""
+        },
+        {
+          "disabled": false,
+          "folded": false,
+          "type": "BuiltinCommonInstructions::Standard",
+          "conditions": [
+            {
+              "type": { "inverted": false, "value": "THNK::StartServerCode" },
+              "parameters": [""],
+              "subInstructions": []
+            },
+            {
+              "type": {
+                "inverted": false,
+                "value": "THNK::OnClientDisconnect"
+              },
+              "parameters": [""],
+              "subInstructions": []
+            },
+            {
+              "type": { "inverted": false, "value": "THNK::UseLinkedObjects" },
+              "parameters": ["", "Player"],
+              "subInstructions": []
+            }
+          ],
+          "actions": [
+            {
+              "type": { "inverted": false, "value": "Delete" },
+              "parameters": ["Player"],
+              "subInstructions": []
+            },
+            {
+              "type": { "inverted": false, "value": "ModVarScene" },
+              "parameters": ["State.Score", "-", "1"],
+              "subInstructions": []
+            }
+          ],
+          "events": []
+        }
+      ],
+      "layers": [
+        {
+          "ambientLightColorB": 200,
+          "ambientLightColorG": 200,
+          "ambientLightColorR": 200,
+          "followBaseLayerCamera": false,
+          "isLightingLayer": false,
+          "name": "",
+          "visibility": true,
+          "cameras": [
+            {
+              "defaultSize": true,
+              "defaultViewport": true,
+              "height": 0,
+              "viewportBottom": 1,
+              "viewportLeft": 0,
+              "viewportRight": 1,
+              "viewportTop": 0,
+              "width": 0
+            }
+          ],
+          "effects": []
+        }
+      ],
+      "behaviorsSharedData": []
+    }
+  ],
+  "externalEvents": [],
+  "eventsFunctionsExtensions": [],
+  "externalLayouts": [],
+  "externalSourceFiles": []
+}

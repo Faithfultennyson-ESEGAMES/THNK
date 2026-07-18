@@ -5,10 +5,10 @@ import {
   ConnectionStartMessage,
 } from "t-h-n-k";
 import { applyGameStateSnapshotToScene } from "client/ApplyGameStateSnapshot";
-import { sendConnectionRequest } from "client/ClientMessageSender";
 import { setConnectionState } from "client/ClientConnectionState";
 import { THNKClientContext } from "client/THNKClientContext";
 import { loadScene } from "utils/LoadScene";
+import { startConnectionRequestRetry } from "client/ConnectionRequestRetry";
 
 const logger = new gdjs.Logger("THNK - Client");
 const fail = (reason: string) => {
@@ -25,13 +25,14 @@ export const startClient = async (
   try {
     await adapter.prepare(runtimeScene);
   } catch {
-    fail("Adapter crashed while starting server!");
-    // Abort server startup
+    adapter.close();
+    fail("Adapter crashed while connecting to the server!");
+    // Abort client startup
     return;
   }
 
   setConnectionState("loading");
-  sendConnectionRequest(adapter);
+  const stopConnectionRequestRetry = startConnectionRequestRetry(adapter);
 
   const intervalID = setInterval(async () => {
     const message = (adapter.getPendingMessages() as ServerMessage[]).shift();
@@ -39,6 +40,7 @@ export const startClient = async (
     const messageType = message.contentType();
     if (messageType === ServerMessageContent.ConnectionStartMessage) {
       clearInterval(intervalID);
+      stopConnectionRequestRetry();
       const connectionStartMessage = message.content(
         new ConnectionStartMessage()
       ) as ConnectionStartMessage;
@@ -46,6 +48,7 @@ export const startClient = async (
       const sceneName = connectionStartMessage.sceneName();
       const sceneSnapshot = connectionStartMessage.sceneSnapshot();
       if (!sceneName || !sceneSnapshot) {
+        adapter.close();
         fail(
           "Server Connection Start Message was invalid, couldn't finish setting up the connection."
         );

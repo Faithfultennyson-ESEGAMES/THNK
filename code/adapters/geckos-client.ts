@@ -39,7 +39,10 @@ THNK.GeckosClientAdapter = class GeckosClientAdapter extends (
       );
     }
     this.connection.raw.emit(
-      message.buffer.slice(message.buffer.byteLength - message.byteLength)
+      message.buffer.slice(
+        message.byteOffset,
+        message.byteOffset + message.byteLength
+      )
     );
   }
 

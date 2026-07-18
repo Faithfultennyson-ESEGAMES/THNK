@@ -90,6 +90,14 @@ const runClientTickPreEvent = async (runtimeScene: gdjs.RuntimeScene) => {
   }
 
   adapter.markPendingMessagesAsRead();
+  runtimeScene.thnkClient?.captureAuthoritativeState();
+};
+
+const restoreAuthoritativeStatePostEvent = (
+  runtimeScene: gdjs.RuntimeScene
+) => {
+  runtimeScene.thnkClient?.restoreAuthoritativeState();
 };
 
 gdjs.registerRuntimeScenePreEventsCallback(runClientTickPreEvent);
+gdjs.registerRuntimeScenePostEventsCallback(restoreAuthoritativeStatePostEvent);
