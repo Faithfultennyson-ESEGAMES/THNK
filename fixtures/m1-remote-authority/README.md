@@ -54,3 +54,20 @@ cleanup. The check intentionally closes the client on port 9223.
 The server remains a GDevelop desktop preview in M1 because the inherited
 Geckos server adapter requires Electron. M2 replaces that launch step with the
 headless server export CLI.
+
+## Run through the M2 artifact
+
+```text
+yarn fixture:m2:export
+yarn fixture:m2:validate
+cd .generated/m2/server-bundle
+yarn install --frozen-lockfile --production=true --non-interactive
+cd ../../..
+yarn thnk server run --bundle .generated/m2/server-bundle
+```
+
+With the server running, `yarn fixture:m2:multi-client` performs the automated
+eight-client join, ownership, selective-disconnect, and reconnect check. The
+server uses a hidden Electron renderer rather than a visible GDevelop preview.
+See `docs/project/M2-SERVER-EXPORT.md` for guarantees and current platform
+limits.

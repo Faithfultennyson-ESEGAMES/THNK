@@ -5,7 +5,10 @@ import {
   sendSceneSwitchMessageToAll,
   sendSceneResumeMessageToSome,
 } from "server/ServerMessageSender";
-import { addSerializedMessageToTheQueue } from "server/ClientMessagesQueue";
+import {
+  addSerializedMessageToTheQueue,
+  removeMessagesFromUser,
+} from "server/ClientMessagesQueue";
 import { getTickRate } from "utils/Settings";
 import { setupSceneAsServer } from "server/SetupServerScene";
 import { ServerAdapter } from "adapters/Adapter";
@@ -46,8 +49,10 @@ const runServerTickPreEvent = (runtimeScene: gdjs.RuntimeScene) => {
     messages.length = 0;
   }
 
-  for (const disconnectedUser of adapter.getDisconnectedUsers())
+  for (const disconnectedUser of adapter.getDisconnectedUsers()) {
+    removeMessagesFromUser(disconnectedUser);
     runtimeScene.thnkServer.playerManager._onDisconnect(disconnectedUser);
+  }
   adapter.getDisconnectedUsers().length = 0;
 
   const timeManager = runtimeScene.getTimeManager();
@@ -104,6 +109,7 @@ const runServerTickPostEvent = (runtimeScene: gdjs.RuntimeScene) => {
           snapshot
         );
   }
+  runtimeScene.thnkServer.playerManager.finalizeDisconnections();
 };
 
 let sceneSwitch: { adapter: ServerAdapter; isPause: boolean } | null = null;

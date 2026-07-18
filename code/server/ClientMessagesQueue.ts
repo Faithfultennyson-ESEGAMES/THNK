@@ -30,6 +30,18 @@ export const addRawMessageToTheQueue = (
   getQueue(messageName).push({ initiatorUserID, extraData });
 };
 
+export const removeMessagesFromUser = (userID: string) => {
+  for (const [name, queue] of queueMap) {
+    const remaining = queue.filter(
+      (message) => message.initiatorUserID !== userID
+    );
+    if (remaining.length) queueMap.set(name, remaining);
+    else queueMap.delete(name);
+  }
+};
+
+export const clearMessages = () => queueMap.clear();
+
 export const popMessage = (name: string, extraData: gdjs.Variable) => {
   const queue = getQueue(name);
 

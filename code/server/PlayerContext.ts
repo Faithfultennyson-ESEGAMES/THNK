@@ -5,6 +5,14 @@ export const getCurrentPlayerID = () => currentPlayerID;
 export const switchPlayerContext = (playerID: string) => {
   currentPlayerID = playerID;
 };
+export const releasePlayerContext = (playerID: string) => {
+  playerObjectsLists.delete(playerID);
+  if (currentPlayerID === playerID) currentPlayerID = "";
+};
+export const resetPlayerContexts = () => {
+  currentPlayerID = "";
+  playerObjectsLists.clear();
+};
 export const markObjectAsOwned = (object: gdjs.RuntimeObject) => {
   let lists = playerObjectsLists.get(currentPlayerID);
   if (!lists)

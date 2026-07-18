@@ -117,7 +117,14 @@ remains before the remote-environment gate is closed.
 
 ### M2 — Server export CLI
 
-Proposed command surface:
+**Implementation status (2026-07-19):** The Windows-local exporter, validator,
+hidden Electron runner, deterministic content hash, bundle-local dependency
+install, and eight-client identity/disconnect/reconnect proof are complete on
+`platform/m2-server-export`. See `docs/project/M2-SERVER-EXPORT.md`. A packaged
+Linux/container run with its display dependency remains before the
+cross-platform M2 gate is closed.
+
+Command surface:
 
 ```text
 thnk export-server --project <path> --output <directory>
@@ -125,7 +132,9 @@ thnk server validate --bundle <directory>
 thnk server run --bundle <directory>
 ```
 
-The first discovery task is to determine the correct stable input: a `.json` GDevelop project, a normal web export, or an intermediate generated-code directory. We will not freeze the CLI input contract until M1 reveals how server-tagged events are currently extracted.
+The stable input is a GDevelop `.json` project containing exactly one literal
+Geckos `HostServer` action. The exporter imports the repository's generated
+extensions and compiles the dedicated HTML5/Electron runtime itself.
 
 **Bundle contract**
 

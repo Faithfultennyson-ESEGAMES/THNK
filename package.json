@@ -3,6 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "license": "AGPL-3.0-only",
+  "bin": {
+    "thnk": "./bin/thnk.js"
+  },
   "packageManager": "yarn@1.22.22",
   "engines": {
     "node": "18.20.x",
@@ -15,13 +18,17 @@
     "postinstall": "node ./scripts/generate-protocol.js",
     "test": "jest",
     "ts": "tsc",
-    "format": "prettier --write ./code/**/* ./scripts/*.js",
+    "format": "prettier --write ./bin/*.js ./code/**/* ./scripts/**/*.js ./scripts/**/*.cjs",
     "generate-protocol": "node ./scripts/generate-protocol.js",
     "fixture:m1:prepare": "node ./scripts/m1/prepare-fixture.js",
     "fixture:m1:export-client": "node ./scripts/m1/export-client.js",
     "fixture:m1:serve-client": "node ./scripts/m1/serve-client.js",
     "fixture:m1:runtime-check": "node ./scripts/m1/runtime-check.js",
     "fixture:m1:validate": "node ./scripts/m1/validate-fixture.js",
+    "fixture:m2:export": "node ./scripts/m2/export-fixture.js",
+    "fixture:m2:multi-client": "node ./scripts/m2/multi-client-check.js",
+    "fixture:m2:validate": "node ./bin/thnk.js server validate --bundle ./.generated/m2/server-bundle",
+    "thnk": "node ./bin/thnk.js",
     "build:thnk": "tsup ./code/index.ts --format esm --platform=browser --treeshake smallest --minify && tsup ./dist/index.mjs --format iife --platform=browser --global-name THNK --minify && node -e \"fs.promises.rm('./dist/index.mjs', {force:true})\"",
     "build:thnk:dev": "tsup ./code/index.ts --format iife --platform=browser --global-name THNK",
     "build:protocol-debug": "tsup ./code/t-h-n-k/index.ts --format iife --platform=browser --global-name T",
@@ -31,6 +38,7 @@
     "build": "yarn build:clean && yarn generate-protocol && yarn build:thnk && yarn build:adapters && yarn build:extensions"
   },
   "devDependencies": {
+    "@electron/remote": "2.1.2",
     "@geckos.io/client": "^2.2.3",
     "@geckos.io/server": "^2.2.3",
     "@types/follow-redirects": "^1.14.1",
@@ -38,6 +46,7 @@
     "@types/node": "^18.7.18",
     "@types/pako": "^2.0.0",
     "all-contributors-cli": "^6.24.0",
+    "electron": "32.3.3",
     "flatbuffers": "^2.0.6",
     "follow-redirects": "^1.15.2",
     "jest": "^29.0.3",

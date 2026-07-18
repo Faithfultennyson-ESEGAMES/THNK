@@ -5,11 +5,7 @@ import type {
   ServerChannel,
 } from "@geckos.io/server";
 import type { FollowResponse } from "follow-redirects";
-
-const getSomeNums = () =>
-  Math.random()
-    .toFixed(Math.ceil(Math.random() * 6) + 2)
-    .slice(2);
+import { ConnectionIDFactory } from "adapters/ConnectionID";
 
 const logger = new gdjs.Logger("THNK - Geckos adapter");
 
@@ -17,11 +13,10 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
   THNK.ServerAdapter
 ) {
   port: number;
-  id = 0;
+  connectionIDs = new ConnectionIDFactory();
   server: GeckosServer | null = null;
   httpServer: import("http").Server | null = null;
   channels = new Map<string, ServerChannel>();
-  serverID = `${getSomeNums()}-server-${getSomeNums()}`;
   beforeUnloadHandler: ((event: BeforeUnloadEvent) => void) | null = null;
   constructor(port: number) {
     super();
@@ -46,9 +41,21 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
 
     let geckos: typeof GeckosType | undefined;
     if (!runtimeScene.getGame().isPreview()) {
-      geckos = electronRequire<{ geckos: typeof GeckosType }>(
-        "@geckos.io/server"
-      ).geckos;
+      const { thnkGeckosBridgePath } = runtimeScene
+        .getGame()
+        .getAdditionalOptions() as { thnkGeckosBridgePath?: string };
+      if (thnkGeckosBridgePath) {
+        const bridge = electronRequire<{
+          loadGeckos: () => Promise<void>;
+          createServer: typeof GeckosType;
+        }>(thnkGeckosBridgePath);
+        await bridge.loadGeckos();
+        geckos = bridge.createServer;
+      } else {
+        geckos = electronRequire<{ geckos: typeof GeckosType }>(
+          "@geckos.io/server"
+        ).geckos;
+      }
     } else {
       // On previews we need to download a prebuilt version of the module as it is not pre-installed
       const fs = electronRequire<typeof import("fs")>("fs");
@@ -112,7 +119,7 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
       // Generate a simple ID that is certainly unique,
       // yet not easily guessable (as that can open up
       // an attack vector in some cases)
-      const id = `${getSomeNums()}-${this.id++}-${getSomeNums()}`;
+      const id = this.connectionIDs.createClientID();
 
       this.onConnection(id);
       this.channels.set(id, channel);
@@ -196,7 +203,7 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
   }
 
   getServerID(): string {
-    return this.serverID;
+    return this.connectionIDs.getServerID();
   }
 
   getServerIP() {
