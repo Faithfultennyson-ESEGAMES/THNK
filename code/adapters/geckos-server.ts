@@ -17,6 +17,14 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
   server: GeckosServer | null = null;
   httpServer: import("http").Server | null = null;
   channels = new Map<string, ServerChannel>();
+  bridge:
+    | {
+        playerConnected: (identity: unknown, connectionId: string) => boolean;
+        playerDisconnected: (identity: unknown, connectionId: string) => void;
+        onSessionEnding: (callback: () => void) => () => void;
+      }
+    | undefined;
+  removeSessionEndingListener: (() => void) | undefined;
   beforeUnloadHandler: ((event: BeforeUnloadEvent) => void) | null = null;
   constructor(port: number) {
     super();
@@ -48,9 +56,16 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
         const bridge = electronRequire<{
           loadGeckos: () => Promise<void>;
           createServer: typeof GeckosType;
+          playerConnected: (identity: unknown, connectionId: string) => boolean;
+          playerDisconnected: (identity: unknown, connectionId: string) => void;
+          onSessionEnding: (callback: () => void) => () => void;
         }>(thnkGeckosBridgePath);
         await bridge.loadGeckos();
         geckos = bridge.createServer;
+        this.bridge = bridge;
+        this.removeSessionEndingListener = bridge.onSessionEnding(() => {
+          for (const channel of this.channels.values()) channel.close();
+        });
       } else {
         geckos = electronRequire<{ geckos: typeof GeckosType }>(
           "@geckos.io/server"
@@ -123,12 +138,29 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
     });
 
     this.server.onConnection((channel) => {
+      const transportConnectionId =
+        channel.id || this.connectionIDs.createClientID();
+      const identity = (channel.userData as { thnkIdentity?: unknown })
+        ?.thnkIdentity;
       // Generate a simple ID that is certainly unique,
       // yet not easily guessable (as that can open up
       // an attack vector in some cases)
-      const id = this.connectionIDs.createClientID();
+      const id =
+        (identity as { playerId?: string } | undefined)?.playerId ||
+        this.connectionIDs.createClientID();
 
-      this.onConnection(id);
+      if (!this.onConnection(id)) {
+        channel.close();
+        return;
+      }
+      if (
+        identity &&
+        !this.bridge?.playerConnected(identity, transportConnectionId)
+      ) {
+        this.onDisconnection(id);
+        channel.close();
+        return;
+      }
       this.channels.set(id, channel);
 
       channel.on("error", (err) => logger.error("Channel error! ", err));
@@ -142,6 +174,8 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
       channel.onDisconnect(() => {
         this.onDisconnection(id);
         this.channels.delete(id);
+        if (identity)
+          this.bridge?.playerDisconnected(identity, transportConnectionId);
       });
     });
 
@@ -171,15 +205,13 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
     });
 
     // Force close the server when closing the preview window
-    this.beforeUnloadHandler = (e: BeforeUnloadEvent) => {
-      e.returnValue = "false";
-      this.close();
-      window.close();
-    };
+    this.beforeUnloadHandler = () => this.close();
     window.addEventListener("beforeunload", this.beforeUnloadHandler);
   }
 
   close() {
+    this.removeSessionEndingListener?.();
+    this.removeSessionEndingListener = undefined;
     if (this.beforeUnloadHandler) {
       window.removeEventListener("beforeunload", this.beforeUnloadHandler);
       this.beforeUnloadHandler = null;

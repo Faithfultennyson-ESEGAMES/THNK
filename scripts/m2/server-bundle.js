@@ -3,7 +3,7 @@ const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const FORMAT_VERSION = 1;
+const FORMAT_VERSION = 2;
 const ELECTRON_VERSION = "32.3.3";
 const ELECTRON_REMOTE_VERSION = "2.1.2";
 const GECKOS_VERSION = "3.1.0";
@@ -181,6 +181,9 @@ const makePackageName = (name) =>
       .replace(/^-|-$/g, "") || "game"
   }-thnk-server`;
 
+const getDefaultControlPort = (serverPort) =>
+  serverPort < 65_535 ? serverPort + 1 : 9209;
+
 const writeBundleFiles = (bundlePath, project, entry) => {
   fs.cpSync(runtimeTemplate, path.join(bundlePath, "runtime"), {
     recursive: true,
@@ -208,7 +211,13 @@ const writeBundleFiles = (bundlePath, project, entry) => {
   );
   fs.writeFileSync(
     path.join(bundlePath, "config.example.env"),
-    "THNK_SERVER_START_TIMEOUT_MS=30000\n"
+    `THNK_SERVER_START_TIMEOUT_MS=30000\n` +
+      `THNK_BRIDGE_ENABLED=false\n` +
+      `THNK_CONTROL_HOST=127.0.0.1\n` +
+      `THNK_CONTROL_PORT=${getDefaultControlPort(entry.port)}\n` +
+      `THNK_CONTROL_TOKEN=\n` +
+      `THNK_WEBHOOK_SECRET=\n` +
+      `THNK_ALLOW_INSECURE_CALLBACKS=false\n`
   );
   fs.writeFileSync(
     path.join(bundlePath, "README.md"),
@@ -219,7 +228,12 @@ const writeBundleFiles = (bundlePath, project, entry) => {
       "On a displayless Ubuntu 24.04 host, install Electron's runtime libraries and Xvfb, configure Electron's sandbox, then launch inside the virtual display:\n\n" +
       "```text\nsudo apt-get update\nsudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libx11-xcb1 libdrm2 libxkbcommon0 libatk-bridge2.0-0 libcups2 libatspi2.0-0 fonts-liberation\nsudo chown root:root node_modules/electron/dist/chrome-sandbox\nsudo chmod 4755 node_modules/electron/dist/chrome-sandbox\nxvfb-run -a --server-args='-screen 0 1024x768x24' yarn start\n```\n\n" +
       `The authoritative Geckos server listens on port ${entry.port}. ` +
-      "The Electron window is created hidden; stop with SIGINT or SIGTERM.\n"
+      "The Electron window is created hidden; stop with SIGINT or SIGTERM.\n\n" +
+      "## Matchmaking bridge\n\n" +
+      "The bridge is disabled by default, preserving direct THNK connections. To enable it, copy the values from `config.example.env` into the server environment, set `THNK_BRIDGE_ENABLED=true`, and provide independently generated random values of at least 32 characters for `THNK_CONTROL_TOKEN` and `THNK_WEBHOOK_SECRET`. Never place either secret in a game client.\n\n" +
+      `The v1 control API defaults to \`127.0.0.1:${getDefaultControlPort(
+        entry.port
+      )}\`. Bind it only to a private or otherwise protected interface. Player admission JWTs are sent to Geckos in the HTTP \`Authorization\` header, never in a URL. Plain HTTP callback URLs are accepted only for loopback development when \`THNK_ALLOW_INSECURE_CALLBACKS=true\`.\n`
   );
 };
 
@@ -306,6 +320,13 @@ const exportServer = ({ projectPath, outputPath }) => {
         electronVersion: ELECTRON_VERSION,
         nodeVersion: NODE_VERSION_RANGE,
       },
+      control: {
+        apiVersion: "v1",
+        defaultHost: "127.0.0.1",
+        defaultPort: getDefaultControlPort(entry.port),
+        admissionTransport: "authorization-header",
+        enabledByEnvironment: "THNK_BRIDGE_ENABLED",
+      },
       contentHash: { algorithm: "sha256", value: "" },
     };
     fs.writeFileSync(
@@ -347,6 +368,16 @@ const validateBundle = (bundlePath) => {
     throw new Error("Bundle contains an invalid server port.");
   if (manifest.entry?.port !== manifest.runtime.port)
     throw new Error("Bundle entry port does not match its runtime port.");
+  if (
+    manifest.control?.apiVersion !== "v1" ||
+    manifest.control?.admissionTransport !== "authorization-header" ||
+    manifest.control?.enabledByEnvironment !== "THNK_BRIDGE_ENABLED" ||
+    !Number.isInteger(manifest.control?.defaultPort) ||
+    manifest.control.defaultPort < 1 ||
+    manifest.control.defaultPort > 65_535 ||
+    manifest.control.defaultPort === manifest.runtime.port
+  )
+    throw new Error("Bundle contains an invalid control API configuration.");
   const resolveInsideBundle = (relativePath) => {
     const absolutePath = path.resolve(root, relativePath || "");
     if (absolutePath !== root && !absolutePath.startsWith(`${root}${path.sep}`))
@@ -356,7 +387,11 @@ const validateBundle = (bundlePath) => {
   for (const relativePath of [
     manifest.runtime?.entryPoint,
     `${manifest.runtime?.serverDirectory}/index.html`,
+    "runtime/control-server.cjs",
     "runtime/geckos-bridge.cjs",
+    "runtime/jwt-verifier.cjs",
+    "runtime/session-manager.cjs",
+    "runtime/webhook-outbox.cjs",
     "package.json",
     "yarn.lock",
   ]) {

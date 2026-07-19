@@ -159,6 +159,13 @@ server-bundle/
 
 ### M3 — External Matchmaking Bridge
 
+**Implementation status (2026-07-19):** Complete on
+`platform/m3-matchmaking-bridge`. The versioned one-session control API,
+RS256/roster admission, canonical player binding, fresh-token reconnect,
+signed retrying webhooks, exported-artifact process lifecycle, and adversarial
+two-client proof are recorded in
+`docs/project/M3-MATCHMAKING-BRIDGE.md`.
+
 The one-session-per-process runtime exposes a versioned control contract. A provisional API, to be finalized after the Geckos transport spike, is:
 
 ```http

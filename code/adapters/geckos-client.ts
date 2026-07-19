@@ -7,17 +7,37 @@ THNK.GeckosClientAdapter = class GeckosClientAdapter extends (
 ) {
   ip: string;
   port: number;
+  authorization?: string;
   connection: ClientChannel | null = null;
-  constructor(ip: string, port: number) {
+  constructor(ip: string, port: number, admissionToken?: string) {
     super();
     this.ip = `http://${ip}`;
     this.port = port;
+    const injectedToken = (
+      globalThis as typeof globalThis & {
+        THNK_ADMISSION_TOKEN?: string;
+      }
+    ).THNK_ADMISSION_TOKEN;
+    const token = (admissionToken || injectedToken)?.trim();
+    if (token) this.authorization = `Bearer ${token}`;
+    if (!admissionToken && injectedToken)
+      delete (
+        globalThis as typeof globalThis & {
+          THNK_ADMISSION_TOKEN?: string;
+        }
+      ).THNK_ADMISSION_TOKEN;
   }
 
   async prepare(): Promise<void> {
-    this.connection = geckos({ url: this.ip, port: this.port, label: "THNK" });
+    this.connection = geckos({
+      url: this.ip,
+      port: this.port,
+      label: "THNK",
+      authorization: this.authorization,
+    });
     await new Promise<void>((resolve, reject) =>
       this.connection!.onConnect((error) => {
+        this.authorization = undefined;
         if (error) return reject(error.message);
         this.connection!.onRaw((message) =>
           this.onMessage(message as Uint8Array)

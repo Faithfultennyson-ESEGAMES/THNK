@@ -109,6 +109,13 @@ test("validates the bundle hash and detects tampering", () => {
     path.join(bundle, "runtime/geckos-bridge.cjs"),
     "// bridge\n"
   );
+  for (const runtimeFile of [
+    "control-server.cjs",
+    "jwt-verifier.cjs",
+    "session-manager.cjs",
+    "webhook-outbox.cjs",
+  ])
+    fs.writeFileSync(path.join(bundle, "runtime", runtimeFile), "// runtime\n");
   fs.writeFileSync(path.join(bundle, "server/index.html"), "server\n");
   fs.writeFileSync(path.join(bundle, "yarn.lock"), "# lock\n");
   fs.writeFileSync(
@@ -134,6 +141,13 @@ test("validates the bundle hash and detects tampering", () => {
       port: 9208,
       electronVersion: "32.3.3",
       nodeVersion: "18.20.x",
+    },
+    control: {
+      apiVersion: "v1",
+      defaultHost: "127.0.0.1",
+      defaultPort: 9209,
+      admissionTransport: "authorization-header",
+      enabledByEnvironment: "THNK_BRIDGE_ENABLED",
     },
     contentHash: { algorithm: "sha256", value: "" },
   };
