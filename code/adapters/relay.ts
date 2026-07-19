@@ -1,6 +1,6 @@
 /// <reference path="../types/global.d.ts"/>
 /// <reference path="./relay.d.ts"/>
-import { MessagesForServer } from "relay/src/messages";
+import { MessagesForServer } from "../relay/src/messages";
 
 THNK.RELAY_SERVER_URL = "wss://relay.thnk.cloud";
 

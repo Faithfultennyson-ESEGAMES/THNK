@@ -116,10 +116,10 @@ old object is gone; they are not player/account identities.
 - Bundle-local hidden Electron launch: ready on port 9208.
 - Eight-client join/move/disconnect/reconnect check: passed.
 
-The repository-wide `yarn ts` and full `yarn build` gates are currently blocked
-by the locally deleted `code/relay` workspace, which is unrelated user work and
-was deliberately not restored. The changed core and Geckos adapter were built
-directly, and their generated THNK extensions were regenerated successfully.
+The repository-wide frozen install, `yarn ts`, `yarn test --runInBand`, and full
+`yarn build` gates passed on Windows after restoring the accidentally omitted
+tracked `code/relay` workspace. The full build also regenerates extensions
+without embedding a machine-specific source path.
 
 ## Capacity boundary
 
