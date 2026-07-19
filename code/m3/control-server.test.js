@@ -150,3 +150,54 @@ test("rejects oversized control payloads with a bounded 413 response", async () 
     error: "request_too_large",
   });
 });
+
+test("serves the public CORS voice refresh route through an opaque capability", async () => {
+  const refreshVoice = jest.fn((authorization) => {
+    if (authorization !== `Bearer ${"v".repeat(43)}`) {
+      const error = new Error("voice_authorization_invalid");
+      error.code = "voice_authorization_invalid";
+      error.status = 401;
+      throw error;
+    }
+    return {
+      appId: "a".repeat(32),
+      channel: "thnk-channel",
+      uid: "thnk-u-alice",
+      token: "007-refreshed-token",
+      expiresAt: "2030-01-01T00:00:00.000Z",
+    };
+  });
+  server = createControlServer({
+    sessionManager: { refreshVoice },
+    controlToken,
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const { port } = server.address();
+  const url = `http://127.0.0.1:${port}/v1/voice/token`;
+
+  const preflight = await fetch(url, { method: "OPTIONS" });
+  expect(preflight.status).toBe(204);
+  expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+  expect(preflight.headers.get("access-control-allow-headers")).toContain(
+    "authorization"
+  );
+
+  const unauthorized = await fetch(url, { method: "POST" });
+  expect(unauthorized.status).toBe(401);
+  await expect(unauthorized.json()).resolves.toEqual({
+    error: "voice_authorization_invalid",
+  });
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${"v".repeat(43)}` },
+  });
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  await expect(response.json()).resolves.toMatchObject({
+    uid: "thnk-u-alice",
+    token: "007-refreshed-token",
+  });
+  expect(refreshVoice).toHaveBeenLastCalledWith(`Bearer ${"v".repeat(43)}`);
+});

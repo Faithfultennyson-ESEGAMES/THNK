@@ -8,9 +8,15 @@ const path = require("path");
 const { evaluate, sendCommand } = require("../m1/inspect-runtime");
 
 const repositoryRoot = path.resolve(__dirname, "../..");
+const m4Check = process.env.THNK_M4_CHECK === "true";
+const liveAgora = process.env.THNK_M4_LIVE === "true";
+const milestone = m4Check ? "M4" : "M3";
 const bundlePath = path.join(repositoryRoot, ".generated/m2/server-bundle");
 const clientBuild = path.join(repositoryRoot, ".generated/m1/client/build");
-const generatedRoot = path.join(repositoryRoot, ".generated/m3");
+const generatedRoot = path.join(
+  repositoryRoot,
+  m4Check ? ".generated/m4" : ".generated/m3"
+);
 const chromePath =
   process.env.CHROME_BIN ||
   "C:/Program Files/Google/Chrome/Application/chrome.exe";
@@ -23,6 +29,8 @@ const clientPort = 8080;
 const clients = new Map();
 const receivedAttempts = [];
 const logicalEvents = new Map();
+const agoraAppId = process.env.AGORA_APP_ID || "a".repeat(32);
+const agoraAppCertificate = process.env.AGORA_APP_CERTIFICATE || "b".repeat(32);
 let retryInjected = false;
 
 if (!fs.existsSync(path.join(bundlePath, "manifest.json")))
@@ -35,6 +43,18 @@ if (!fs.existsSync(chromePath))
 const delay = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+const directoryContains = (directory, value) => {
+  const needle = Buffer.from(value);
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (directoryContains(entryPath, value)) return true;
+    } else if (entry.isFile() && fs.readFileSync(entryPath).includes(needle))
+      return true;
+  }
+  return false;
+};
+
 const waitFor = async (read, predicate, description, timeout = 60_000) => {
   const deadline = Date.now() + timeout;
   let value;
@@ -45,9 +65,12 @@ const waitFor = async (read, predicate, description, timeout = 60_000) => {
     } catch {}
     await delay(150);
   } while (Date.now() < deadline);
-  throw new Error(
-    `Timed out waiting for ${description}: ${JSON.stringify(value)}`
+  const safeValue = JSON.stringify(value, (key, entry) =>
+    /token|secret|certificate|authorization|capability/i.test(key)
+      ? "[redacted]"
+      : entry
   );
+  throw new Error(`Timed out waiting for ${description}: ${safeValue}`);
 };
 
 const keys = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -177,8 +200,21 @@ const admissionStatus = async (token) =>
 const snapshot = (debugPort) =>
   evaluate(
     debugPort,
-    `(() => {
+    `(async () => {
       const scene = window.__thnkRuntimeScene;
+      const voice = window.THNK?.voice;
+      const voiceGrant = voice?.grant;
+      const capabilityBytes = voiceGrant?.refreshCapability
+        ? await crypto.subtle.digest(
+            "SHA-256",
+            new TextEncoder().encode(voiceGrant.refreshCapability)
+          )
+        : undefined;
+      const refreshCapabilityFingerprint = capabilityBytes
+        ? Array.from(new Uint8Array(capabilityBytes))
+            .map(byte => byte.toString(16).padStart(2, "0"))
+            .join("")
+        : undefined;
       return {
         admissionTokenCleared: !("THNK_ADMISSION_TOKEN" in window),
         connection: window.THNK?.client?.getConnectionState?.(),
@@ -186,10 +222,21 @@ const snapshot = (debugPort) =>
         players: (scene?.getObjects("Player") || []).map(player => ({
           id: player.thnkID,
           x: player.getX()
-        })).sort((left, right) => left.id - right.id)
+        })).sort((left, right) => left.id - right.id),
+        voice: {
+          state: voice?.getConnectionState?.(),
+          error: voice?.getLastError?.(),
+          channel: voiceGrant?.channel,
+          uid: voiceGrant?.uid,
+          refreshCapabilityFingerprint,
+          localTrackPublished: Boolean(voice?.localTrack),
+          remoteAudioUsers: voice?.remoteUsers?.size || 0
+        }
       };
     })()`
   );
+
+const gameplaySnapshot = ({ voice: _voice, ...gameplay }) => gameplay;
 
 const launchClient = async (playerId, debugPort, generation, token) => {
   clientTokens.set(playerId, token);
@@ -204,6 +251,13 @@ const launchClient = async (playerId, debugPort, generation, token) => {
       "--disable-gpu",
       "--disable-background-networking",
       "--no-first-run",
+      ...(liveAgora
+        ? [
+            "--use-fake-device-for-media-stream",
+            "--use-fake-ui-for-media-stream",
+            "--autoplay-policy=no-user-gesture-required",
+          ]
+        : []),
       "--remote-allow-origins=*",
       `--user-data-dir=${profile}`,
       `--remote-debugging-port=${debugPort}`,
@@ -276,6 +330,14 @@ Object.assign(serverEnvironment, {
   THNK_WEBHOOK_SECRET: webhookSecret,
   THNK_ALLOW_INSECURE_CALLBACKS: "true",
 });
+if (m4Check)
+  Object.assign(serverEnvironment, {
+    THNK_VOICE_ENABLED: "true",
+    AGORA_APP_ID: agoraAppId,
+    AGORA_APP_CERTIFICATE: agoraAppCertificate,
+    THNK_VOICE_TOKEN_URL: `${controlUrl}/v1/voice/token`,
+    THNK_ALLOW_INSECURE_VOICE_TOKEN_URL: "true",
+  });
 const electronPath = require("electron");
 const gameServer = spawn(electronPath, [bundlePath], {
   cwd: bundlePath,
@@ -300,7 +362,7 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
   await waitFor(
     () => fetch(`${controlUrl}/health/live`),
     (response) => response.ok,
-    "M3 control API"
+    `${milestone} control API`
   );
   const session = await controlRequest("/v1/session", {
     method: "POST",
@@ -377,7 +439,124 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
       ),
     "two admitted clients to converge"
   );
-  assert.deepStrictEqual(joined[0], joined[1]);
+  assert.deepStrictEqual(
+    gameplaySnapshot(joined[0]),
+    gameplaySnapshot(joined[1])
+  );
+  let initialBobVoice;
+  if (m4Check) {
+    const voiceReady = await waitFor(
+      () => Promise.all([snapshot(9422), snapshot(9423)]),
+      (values) => values.every((value) => value.voice.channel),
+      "two isolated voice grants"
+    );
+    assert.strictEqual(
+      voiceReady[0].voice.channel,
+      voiceReady[1].voice.channel
+    );
+    assert.notStrictEqual(voiceReady[0].voice.uid, voiceReady[1].voice.uid);
+    assert.notStrictEqual(
+      voiceReady[0].voice.refreshCapabilityFingerprint,
+      voiceReady[1].voice.refreshCapabilityFingerprint
+    );
+    assert.ok(
+      !directoryContains(clientBuild, agoraAppCertificate),
+      "The Agora App Certificate appeared in the client export."
+    );
+    await delay(5_100);
+    const refresh = await evaluate(
+      9422,
+      `(async () => {
+        const grant = window.THNK.voice.grant;
+        const response = await fetch(grant.refreshUrl, {
+          method: "POST",
+          headers: { authorization: "Bearer " + grant.refreshCapability }
+        });
+        const body = await response.json();
+        return {
+          status: response.status,
+          channelMatches: body.channel === grant.channel,
+          uidMatches: body.uid === grant.uid,
+          hasToken: typeof body.token === "string" && body.token.length > 16,
+          hasCertificate: JSON.stringify(body).includes(${JSON.stringify(
+            agoraAppCertificate
+          )})
+        };
+      })()`
+    );
+    assert.deepStrictEqual(refresh, {
+      status: 200,
+      channelMatches: true,
+      uidMatches: true,
+      hasToken: true,
+      hasCertificate: false,
+    });
+    initialBobVoice = voiceReady[1].voice;
+    if (liveAgora) {
+      await waitFor(
+        () => Promise.all([snapshot(9422), snapshot(9423)]),
+        (values) =>
+          values.every(
+            (value) =>
+              value.connection === "connected" &&
+              value.voice.state === "CONNECTED" &&
+              value.voice.localTrackPublished &&
+              value.voice.remoteAudioUsers === 1
+          ),
+        "two-way Agora audio publication and subscription",
+        90_000
+      );
+      const localControls = await evaluate(
+        9422,
+        `(() => {
+          THNK.voice.setRemoteVolume("bob", 37);
+          THNK.voice.setRemoteMuted("bob", true);
+          void THNK.voice.setSelfMuted(true);
+          return {
+            remoteMuted: THNK.voice.isRemoteMuted("bob"),
+            selfMuted: THNK.voice.isSelfMuted(),
+            gameplay: THNK.client.getConnectionState()
+          };
+        })()`
+      );
+      assert.deepStrictEqual(localControls, {
+        remoteMuted: true,
+        selfMuted: true,
+        gameplay: "connected",
+      });
+      await evaluate(
+        9422,
+        `(async () => {
+          await THNK.voice.setSelfMuted(false);
+          THNK.voice.setRemoteMuted("bob", false);
+        })()`
+      );
+      await evaluate(9422, "THNK.voice.leave()");
+      await waitFor(
+        () => Promise.all([snapshot(9422), snapshot(9423)]),
+        (values) =>
+          values[0].connection === "connected" &&
+          values[0].voice.state === "DISCONNECTED" &&
+          values[1].connection === "connected" &&
+          values[1].voice.remoteAudioUsers === 0,
+        "voice-only leave without gameplay disconnect",
+        60_000
+      );
+      await evaluate(9422, "THNK.voice.join()");
+      await waitFor(
+        () => Promise.all([snapshot(9422), snapshot(9423)]),
+        (values) =>
+          values.every(
+            (value) =>
+              value.connection === "connected" &&
+              value.voice.state === "CONNECTED" &&
+              value.voice.remoteAudioUsers === 1
+          ),
+        "voice rejoin and resumed audio exchange",
+        90_000
+      );
+    }
+  }
   assert.deepStrictEqual(
     (await controlRequest("/v1/session")).body.session.connectedPlayers.sort(),
     ["alice", "bob"]
@@ -388,7 +567,8 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
   await waitFor(
     () => Promise.all([snapshot(9422), snapshot(9423)]),
     (values) =>
-      JSON.stringify(values[0]) === JSON.stringify(values[1]) &&
+      JSON.stringify(gameplaySnapshot(values[0])) ===
+        JSON.stringify(gameplaySnapshot(values[1])) &&
       values[0].players.filter(
         (player, index) => player.x !== joined[0].players[index].x
       ).length === 1,
@@ -396,7 +576,7 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
   );
 
   await closeClient(9423);
-  await waitFor(
+  const rejoined = await waitFor(
     async () =>
       (
         await controlRequest("/v1/session")
@@ -419,6 +599,25 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
       ),
     "fresh-token reconnect without identity mixing"
   );
+  if (m4Check) {
+    const rejoinedVoice = await waitFor(
+      () => snapshot(9423),
+      (value) => Boolean(value.voice.channel),
+      "Bob reconnect voice grant"
+    );
+    assert.strictEqual(rejoinedVoice.voice.channel, initialBobVoice.channel);
+    assert.strictEqual(rejoinedVoice.voice.uid, initialBobVoice.uid);
+    assert.notStrictEqual(
+      rejoinedVoice.voice.refreshCapabilityFingerprint,
+      initialBobVoice.refreshCapabilityFingerprint
+    );
+    assert.ok(
+      ["JOINING", "CONNECTED", "CONNECTED_LISTEN_ONLY", "FAILED"].includes(
+        rejoinedVoice.voice.state
+      ),
+      `Unexpected voice state after reconnect: ${rejoinedVoice.voice.state}`
+    );
+  }
 
   const ended = await controlRequest("/v1/session/end", {
     method: "POST",
@@ -463,6 +662,10 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
     "The injected callback outage did not produce an at-least-once retry."
   );
   assert.ok(retryInjected);
+  assert.ok(
+    !serverOutput.includes(agoraAppCertificate),
+    "The Agora App Certificate appeared in server logs."
+  );
 
   console.log(
     JSON.stringify(
@@ -479,12 +682,29 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
         webhookAttempts: receivedAttempts.length,
         logicalEvents: logicalEvents.size,
         serverExitCode: exitCode,
+        ...(m4Check
+          ? {
+              voiceChannelShared: true,
+              voiceUsersDistinct: true,
+              voiceRefreshPassed: true,
+              reconnectVoiceUidStable: true,
+              reconnectCapabilityRotated: true,
+              agoraOutageGameplayUnaffected: true,
+              ...(liveAgora
+                ? {
+                    liveAgoraAudioExchanged: true,
+                    liveMuteVolumePassed: true,
+                    liveVoiceLeaveRejoinPassed: true,
+                  }
+                : {}),
+            }
+          : {}),
       },
       null,
       2
     )
   );
-  console.log("M3 authenticated matchmaking bridge check passed.");
+  console.log(`${milestone} authenticated matchmaking/voice check passed.`);
 })()
   .catch((error) => {
     console.error(error);

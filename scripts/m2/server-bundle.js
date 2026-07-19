@@ -3,10 +3,11 @@ const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const FORMAT_VERSION = 2;
+const FORMAT_VERSION = 3;
 const ELECTRON_VERSION = "32.3.3";
 const ELECTRON_REMOTE_VERSION = "2.1.2";
 const GECKOS_VERSION = "3.1.0";
+const AGORA_TOKEN_VERSION = "2.0.5";
 const NODE_VERSION_RANGE = "18.20.x";
 const repositoryRoot = path.resolve(__dirname, "../..");
 const runtimeTemplate = path.join(__dirname, "runtime");
@@ -129,13 +130,18 @@ const normalizeGeneratedIdentifiers = (serverDirectory) => {
     if (!fileName.endsWith(".js")) continue;
     const filePath = path.join(serverDirectory, fileName);
     const source = fs.readFileSync(filePath, "utf8");
-    const identifiers = new Map();
+    const identifiersByPrefix = new Map();
     const normalized = source.replace(
-      /\buserFunc0x[0-9a-fA-F]+\b/g,
-      (identifier) => {
+      /(\b(?:[A-Za-z_$][\w$]*\.)+)(userFunc(?:0x[0-9a-fA-F]+|[0-9]+))\b/g,
+      (_qualifiedIdentifier, prefix, identifier) => {
+        let identifiers = identifiersByPrefix.get(prefix);
+        if (!identifiers) {
+          identifiers = new Map();
+          identifiersByPrefix.set(prefix, identifiers);
+        }
         if (!identifiers.has(identifier))
           identifiers.set(identifier, `userFunc${identifiers.size}`);
-        return identifiers.get(identifier);
+        return `${prefix}${identifiers.get(identifier)}`;
       }
     );
     if (normalized !== source) fs.writeFileSync(filePath, normalized);
@@ -198,6 +204,7 @@ const writeBundleFiles = (bundlePath, project, entry) => {
     dependencies: {
       "@electron/remote": ELECTRON_REMOTE_VERSION,
       "@geckos.io/server": GECKOS_VERSION,
+      "agora-token": AGORA_TOKEN_VERSION,
       electron: ELECTRON_VERSION,
     },
   };
@@ -217,7 +224,15 @@ const writeBundleFiles = (bundlePath, project, entry) => {
       `THNK_CONTROL_PORT=${getDefaultControlPort(entry.port)}\n` +
       `THNK_CONTROL_TOKEN=\n` +
       `THNK_WEBHOOK_SECRET=\n` +
-      `THNK_ALLOW_INSECURE_CALLBACKS=false\n`
+      `THNK_ALLOW_INSECURE_CALLBACKS=false\n` +
+      `THNK_VOICE_ENABLED=false\n` +
+      `AGORA_APP_ID=\n` +
+      `AGORA_APP_CERTIFICATE=\n` +
+      `THNK_VOICE_TOKEN_URL=\n` +
+      `THNK_ALLOW_INSECURE_VOICE_TOKEN_URL=false\n` +
+      `THNK_VOICE_TOKEN_TTL_SECONDS=600\n` +
+      `THNK_VOICE_MIN_REFRESH_INTERVAL_MS=5000\n` +
+      `THNK_VOICE_MAX_REFRESHES_PER_MINUTE=8\n`
   );
   fs.writeFileSync(
     path.join(bundlePath, "README.md"),
@@ -233,7 +248,9 @@ const writeBundleFiles = (bundlePath, project, entry) => {
       "The bridge is disabled by default, preserving direct THNK connections. To enable it, copy the values from `config.example.env` into the server environment, set `THNK_BRIDGE_ENABLED=true`, and provide independently generated random values of at least 32 characters for `THNK_CONTROL_TOKEN` and `THNK_WEBHOOK_SECRET`. Never place either secret in a game client.\n\n" +
       `The v1 control API defaults to \`127.0.0.1:${getDefaultControlPort(
         entry.port
-      )}\`. Bind it only to a private or otherwise protected interface. Player admission JWTs are sent to Geckos in the HTTP \`Authorization\` header, never in a URL. Plain HTTP callback URLs are accepted only for loopback development when \`THNK_ALLOW_INSECURE_CALLBACKS=true\`.\n`
+      )}\`. Bind its control routes only to a private or otherwise protected interface. Player admission JWTs are sent to Geckos in the HTTP \`Authorization\` header, never in a URL. Plain HTTP callback URLs are accepted only for loopback development when \`THNK_ALLOW_INSECURE_CALLBACKS=true\`.\n\n` +
+      "## Agora session voice\n\n" +
+      "Voice is opt-in. Set `THNK_VOICE_ENABLED=true`, inject `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` as server secrets, and set the public HTTPS `THNK_VOICE_TOKEN_URL` to the externally routed `/v1/voice/token` endpoint. Expose only that route to game clients; keep the other control routes private. The App Certificate must never be placed in a client export, URL, log, or source file. Loopback HTTP is available only for development with `THNK_ALLOW_INSECURE_VOICE_TOKEN_URL=true`.\n"
   );
 };
 
@@ -327,6 +344,12 @@ const exportServer = ({ projectPath, outputPath }) => {
         admissionTransport: "authorization-header",
         enabledByEnvironment: "THNK_BRIDGE_ENABLED",
       },
+      voice: {
+        provider: "agora",
+        tokenEndpoint: "/v1/voice/token",
+        enabledByEnvironment: "THNK_VOICE_ENABLED",
+        credentials: ["AGORA_APP_ID", "AGORA_APP_CERTIFICATE"],
+      },
       contentHash: { algorithm: "sha256", value: "" },
     };
     fs.writeFileSync(
@@ -391,6 +414,7 @@ const validateBundle = (bundlePath) => {
     "runtime/geckos-bridge.cjs",
     "runtime/jwt-verifier.cjs",
     "runtime/session-manager.cjs",
+    "runtime/voice-token-manager.cjs",
     "runtime/webhook-outbox.cjs",
     "package.json",
     "yarn.lock",
@@ -406,6 +430,7 @@ const validateBundle = (bundlePath) => {
   for (const dependency of [
     "@electron/remote",
     "@geckos.io/server",
+    "agora-token",
     "electron",
   ])
     if (!packageData.dependencies?.[dependency])
@@ -414,6 +439,13 @@ const validateBundle = (bundlePath) => {
     throw new Error(
       "Bundle Electron dependency does not match its manifest version."
     );
+  if (
+    manifest.voice?.provider !== "agora" ||
+    manifest.voice?.tokenEndpoint !== "/v1/voice/token" ||
+    manifest.voice?.enabledByEnvironment !== "THNK_VOICE_ENABLED" ||
+    packageData.dependencies["agora-token"] !== AGORA_TOKEN_VERSION
+  )
+    throw new Error("Bundle contains an invalid Agora voice configuration.");
   if (
     manifest.runtime.nodeVersion !== NODE_VERSION_RANGE ||
     packageData.engines?.node !== manifest.runtime.nodeVersion

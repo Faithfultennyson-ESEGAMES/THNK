@@ -249,3 +249,125 @@ project-wide timeline and must be updated as part of every milestone commit.
   validation. Two independent final exports produced content hash
   `37bdb16734028946abd097e843b14a010ef11c9752d4750b86ba2de4b88d6ad0`.
 - Detailed contract and evidence: `docs/project/M3-MATCHMAKING-BRIDGE.md`.
+
+## 2026-07-19 - M4 Agora session voice (implementation and credential-free gate)
+
+### Server voice boundary
+
+- Started `platform/m4-agora-voice` from M3 commit `1534766`.
+- Selected Agora's maintained `agora-token` 2.0.5 server package and Agora Web
+  SDK 4.24.6 after checking the official token builder and current Web SDK API.
+- Added opt-in server configuration. Voice requires bridge mode, a valid
+  32-hex-character App ID and App Certificate, and a public HTTPS token URL;
+  only explicitly enabled loopback development may use HTTP.
+- Derived a shared safe channel from the canonical session ID and a distinct,
+  stable voice UID from each canonical session/player pair. Reconnecting the
+  same player preserves that UID; different players cannot collide through
+  client-selected identity input.
+- Added ten-minute publisher tokens, configurable 120-to-3600-second bounds,
+  five-second minimum refresh spacing, and an eight-per-minute default bound.
+- Added a random 256-bit refresh capability to each admitted connection. Only
+  its SHA-256 digest is stored. It is inactive before gameplay connect and is
+  revoked on abandoned admission, disconnect, or session end. Reconnect rotates
+  the capability.
+- Added `POST /v1/voice/token` with bearer-capability authentication, CORS
+  preflight, `Cache-Control: no-store`, stable errors, and `Retry-After` for
+  issuance throttling.
+- Bumped the server bundle contract to format version 3, added the maintained
+  Agora token dependency and voice manifest contract, and expanded generated
+  configuration/README guidance. The App Certificate remains environment-only.
+
+### Client and GDevelop surface
+
+- Added an Agora voice runtime to the Geckos client extension. It auto-joins
+  only after the authenticated Geckos handshake returns a voice grant.
+- Added join, leave, self mute/unmute, canonical-player remote mute/unmute,
+  per-listener 0-to-100 volume, connection state, connected/muted conditions,
+  speaking indicator/level, and sanitized last-error surfaces.
+- Added remote Agora UID mapping from the server-authoritative roster so
+  moderation controls address canonical player IDs rather than client-chosen
+  aliases.
+- Added timer and Agora-event token refresh. Refresh responses are accepted
+  only if App ID, channel, and UID still match the original admission grant.
+- Microphone denial retains a listen-only connection. Provider join,
+  subscribe, token-endpoint, refresh, and leave errors remain voice-only and do
+  not reject or close gameplay.
+- Minified the Agora-bearing Geckos client adapter separately; the generated
+  extension is about 1.65 MB rather than the initial unminified 2.55 MB.
+
+### Tests and exported-runtime proof
+
+- Added server tests for deterministic/isolated channel and UID derivation,
+  real token creation, certificate absence, capability activation/revocation,
+  refresh throttling, unsafe URL rejection, credential validation, and
+  sanitized provider failures.
+- Added session/control tests proving voice grant lifecycle binding, gameplay
+  admission despite token-generation failure, public CORS refresh behavior,
+  and opaque capability enforcement.
+- Added client tests for admission-only auto-join, publish, listen-only
+  microphone denial, canonical remote mute/volume, speaking state, secure
+  refresh, provider outage isolation, and disconnect cleanup.
+- TypeScript passed. Jest passed 14 suites and 46 tests. Full build and
+  generated GDevelop extension import/export passed.
+- Exported format-v3 server dependencies installed from the frozen lockfile.
+- The credential-free two-client exported-runtime gate passed: one shared
+  channel, distinct Alice/Bob UIDs, distinct capabilities, successful refresh,
+  stable Bob UID across fresh-token reconnect, rotated Bob capability,
+  uninterrupted authoritative gameplay during intentional Agora outage,
+  9 webhook attempts for 8 logical events, player drain, and exit code 0.
+- App Certificate test material was absent from the complete client export,
+  voice refresh response, and server logs.
+- Added `docs/project/M4-AGORA-VOICE.md` and a real-provider test runner that
+  reads credentials from an external, non-repository JSON file without printing
+  them.
+
+### External gate setup
+
+- The actual two-client Agora publication/subscription, local control, voice
+  leave/rejoin, and refreshed-token gate needs a real App ID/App Certificate.
+  It will run only after the external secret file exists; no credential value
+  will be committed or copied into this log.
+
+### Live Agora gate completed
+
+- Read the App ID and App Certificate from the external
+  `D:\CodexTools\THNK-v1\agora-m4.json` file. The runner accepts camel-case or
+  environment-style JSON fields and never prints either value.
+- The first live run proved initial two-way publish/subscribe and local
+  controls, then exposed a test-fixture issue: Alice was intentionally left
+  self-muted before rejoining, so Bob correctly received no republished audio
+  event. Gameplay stayed connected. The server shut down and invalidated the
+  temporary capabilities.
+- Updated the test to unmute before voice rejoin and changed diagnostic
+  snapshots to compare SHA-256 capability fingerprints. Timeout output also
+  redacts token, secret, certificate, authorization, and capability fields.
+- The clean rerun passed real Agora audio publication/subscription for both
+  clients, local self/remote mute and volume, voice-only leave/rejoin with
+  resumed mutual audio, short-lived token refresh, stable canonical UID and
+  rotated capability on Bob's fresh-token reconnect, authoritative gameplay,
+  webhook retry/drain, and exit code 0.
+- The full client export and server output were scanned for the real App
+  Certificate; neither contained it. Refresh responses also contained no
+  certificate.
+
+### M4 final artifact and audit
+
+- A fixed-time reproducibility check initially alternated between two hashes.
+  The only changing generated file reused GDevelop inline-function numbers in
+  separate behavior contexts. Updated normalization to scope generated
+  identifiers by their qualified context and added a regression covering
+  identical numeric names under different prefixes.
+- Two consecutive final exports then produced the identical format-v3 hash
+  `7a9f0d92ad2d52941c43d7f98835fea88d0d8fab739872952ee4598b102495a1`.
+- The exact final artifact passed validation, frozen production dependency
+  install, the credential-free outage/isolation proof, and the live Agora
+  publish/subscribe/control/rejoin/reconnect proof.
+- Final repository gates: frozen root install, TypeScript, 14 Jest suites/46
+  tests, full minified build, generated-extension import, fixture contract,
+  client export, server export validation, and repeated content hash passed.
+- Production dependency audit reported 0 critical, 8 high, 10 moderate, and 3
+  low advisories. All high paths are pre-existing: Electron 32 runtime issues
+  and Geckos/node-datachannel's prebuild installer (`semver`/`tar-fs`). Neither
+  `agora-token` nor `agora-rtc-sdk-ng` introduced a high advisory. M5 must
+  upgrade/test the runtime chain or record formal mitigations before a release
+  candidate.

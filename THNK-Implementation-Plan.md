@@ -207,6 +207,12 @@ Webhook delivery is at-least-once. Receivers deduplicate by event ID. Requests a
 
 ### M4 — Agora voice
 
+**Implementation status (2026-07-19):** Complete on
+`platform/m4-agora-voice`. Server-side identity/token/capability handling, the
+Agora Web client runtime, GDevelop controls, failure isolation, the
+credential-free exported-runtime proof, and the real two-client Agora audio
+publish/subscribe gate pass. See `docs/project/M4-AGORA-VOICE.md`.
+
 **Server work**
 
 - Load Agora credentials only from server-side secrets.

@@ -10,6 +10,9 @@ const {
 const {
   WebhookOutbox,
 } = require("../../scripts/m2/runtime/webhook-outbox.cjs");
+const {
+  VoiceError,
+} = require("../../scripts/m2/runtime/voice-token-manager.cjs");
 
 const keys = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
 const publicKey = keys.publicKey.export({ type: "spki", format: "pem" });
@@ -201,6 +204,66 @@ test("expires abandoned admissions without allowing their token to be replayed",
     })}`
   );
   expect(replacement.thnkIdentity.playerId).toBe("alice");
+});
+
+test("binds voice grants to the exact gameplay admission lifecycle", () => {
+  const voiceManager = {
+    reset: jest.fn(),
+    prepareAdmission: jest.fn((identity) => ({
+      uid: `voice-${identity.playerId}`,
+      token: "short-lived-token",
+    })),
+    activate: jest.fn(),
+    revokeAdmission: jest.fn(),
+    getPublicState: () => ({ enabled: true, activeGrants: 0 }),
+  };
+  const manager = createManager({ voiceManager });
+  manager.createSession(sessionInput());
+  const admission = manager.authorize(`Bearer ${signToken()}`);
+
+  expect(admission.thnkVoice.uid).toBe("voice-alice");
+  expect(voiceManager.prepareAdmission).toHaveBeenCalledWith(
+    expect.objectContaining({
+      sessionId: "session-1",
+      playerId: "alice",
+      players: ["alice", "bob"],
+    })
+  );
+  expect(manager.playerConnected(admission.thnkIdentity, "transport-a")).toBe(
+    true
+  );
+  expect(voiceManager.activate).toHaveBeenCalledWith(
+    admission.thnkIdentity.admissionId,
+    "transport-a"
+  );
+  manager.playerDisconnected(admission.thnkIdentity, "transport-a");
+  expect(voiceManager.revokeAdmission).toHaveBeenCalledWith(
+    admission.thnkIdentity.admissionId
+  );
+});
+
+test("voice token failure is reported without rejecting gameplay admission", () => {
+  const voiceManager = {
+    reset: jest.fn(),
+    prepareAdmission: () => {
+      throw new VoiceError("voice_token_generation_failed", 503);
+    },
+    activate: jest.fn(),
+    revokeAdmission: jest.fn(),
+    getPublicState: () => ({ enabled: true, activeGrants: 0 }),
+  };
+  const manager = createManager({ voiceManager });
+  manager.createSession(sessionInput());
+  const admission = manager.authorize(`Bearer ${signToken()}`);
+
+  expect(admission.thnkVoice).toEqual({
+    available: false,
+    errorCode: "voice_token_generation_failed",
+  });
+  expect(manager.playerConnected(admission.thnkIdentity, "transport-a")).toBe(
+    true
+  );
+  expect(manager.getPublicState().connectedPlayers).toEqual(["alice"]);
 });
 
 test("uses one stable signed event across bounded webhook retries", async () => {

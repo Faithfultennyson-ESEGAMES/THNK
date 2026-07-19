@@ -37,6 +37,7 @@ const evaluate = async (debugPort, expression) => {
   const result = await sendCommand(debugPort, "Runtime.evaluate", {
     expression,
     returnByValue: true,
+    awaitPromise: true,
   });
   if (result?.exceptionDetails)
     throw new Error(

@@ -1,5 +1,6 @@
 /// <reference path="../types/global.d.ts"/>
 import { geckos, type ClientChannel } from "@geckos.io/client";
+import { sessionVoice, type VoiceGrant } from "voice/AgoraSessionVoice";
 const logger = new gdjs.Logger("THNK - Geckos.io Adapter");
 
 THNK.GeckosClientAdapter = class GeckosClientAdapter extends (
@@ -42,7 +43,13 @@ THNK.GeckosClientAdapter = class GeckosClientAdapter extends (
         this.connection!.onRaw((message) =>
           this.onMessage(message as Uint8Array)
         );
-        this.connection!.onDisconnect(() => this.onDisconnection());
+        this.connection!.onDisconnect(() => {
+          void sessionVoice.handleGameplayDisconnect();
+          this.onDisconnection();
+        });
+        void sessionVoice.handleAdmission(
+          (this.connection!.userData as { thnkVoice?: VoiceGrant })?.thnkVoice
+        );
         resolve();
       })
     );

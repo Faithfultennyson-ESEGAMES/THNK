@@ -26,13 +26,13 @@ test("normalizes GDevelop inline function identifiers deterministically", () => 
   const serverDirectory = makeTemporaryDirectory();
   fs.writeFileSync(
     path.join(serverDirectory, "code0.js"),
-    "x.userFunc0x9fae80 = 1; x.userFunc0x9fae80(); x.userFunc0xab12 = 2;\n"
+    "x.userFunc0x9fae80 = 1; x.userFunc0x9fae80(); x.userFunc0xab12 = 2; x.userFunc7 = 3; y.userFunc9 = 4;\n"
   );
 
   normalizeGeneratedIdentifiers(serverDirectory);
 
   expect(fs.readFileSync(path.join(serverDirectory, "code0.js"), "utf8")).toBe(
-    "x.userFunc0 = 1; x.userFunc0(); x.userFunc1 = 2;\n"
+    "x.userFunc0 = 1; x.userFunc0(); x.userFunc1 = 2; x.userFunc2 = 3; y.userFunc0 = 4;\n"
   );
 });
 
@@ -113,6 +113,7 @@ test("validates the bundle hash and detects tampering", () => {
     "control-server.cjs",
     "jwt-verifier.cjs",
     "session-manager.cjs",
+    "voice-token-manager.cjs",
     "webhook-outbox.cjs",
   ])
     fs.writeFileSync(path.join(bundle, "runtime", runtimeFile), "// runtime\n");
@@ -126,6 +127,7 @@ test("validates the bundle hash and detects tampering", () => {
       dependencies: {
         "@electron/remote": "2.1.2",
         "@geckos.io/server": "3.1.0",
+        "agora-token": "2.0.5",
         electron: "32.3.3",
       },
     })}\n`
@@ -148,6 +150,11 @@ test("validates the bundle hash and detects tampering", () => {
       defaultPort: 9209,
       admissionTransport: "authorization-header",
       enabledByEnvironment: "THNK_BRIDGE_ENABLED",
+    },
+    voice: {
+      provider: "agora",
+      tokenEndpoint: "/v1/voice/token",
+      enabledByEnvironment: "THNK_VOICE_ENABLED",
     },
     contentHash: { algorithm: "sha256", value: "" },
   };

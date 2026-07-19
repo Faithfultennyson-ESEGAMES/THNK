@@ -6,6 +6,7 @@ const {
   validIdentifier,
 } = require("./jwt-verifier.cjs");
 const { WebhookOutbox } = require("./webhook-outbox.cjs");
+const { VoiceError, VoiceTokenManager } = require("./voice-token-manager.cjs");
 
 class BridgeError extends Error {
   constructor(code, status = 400) {
@@ -41,6 +42,7 @@ class SessionManager extends EventEmitter {
     randomUUID = () => crypto.randomUUID(),
     outboxOptions = {},
     playerDrainTimeoutMs = 3_000,
+    voiceManager = new VoiceTokenManager(),
   } = {}) {
     super();
     this.enabled = enabled;
@@ -51,6 +53,7 @@ class SessionManager extends EventEmitter {
     this.randomUUID = randomUUID;
     this.outboxOptions = outboxOptions;
     this.playerDrainTimeoutMs = playerDrainTimeoutMs;
+    this.voiceManager = voiceManager;
     this.gameReady = false;
     this.session = undefined;
     this.verifier = undefined;
@@ -76,6 +79,7 @@ class SessionManager extends EventEmitter {
     for (const [admissionId, identity] of this.pendingAdmissions) {
       if (identity.expiresAt > nowSeconds) continue;
       this.pendingAdmissions.delete(admissionId);
+      this.voiceManager.revokeAdmission(admissionId);
       if (this.pendingByPlayer.get(identity.playerId) === admissionId)
         this.pendingByPlayer.delete(identity.playerId);
     }
@@ -127,6 +131,7 @@ class SessionManager extends EventEmitter {
     this.pendingAdmissions.clear();
     this.pendingByPlayer.clear();
     this.activePlayers.clear();
+    this.voiceManager.reset();
     this.outbox = new WebhookOutbox({
       callbackUrl,
       secret: this.webhookSecret,
@@ -192,7 +197,23 @@ class SessionManager extends EventEmitter {
     this.usedTokenIds.add(claims.jti);
     this.pendingAdmissions.set(admissionId, identity);
     this.pendingByPlayer.set(claims.playerId, admissionId);
-    return { thnkIdentity: identity };
+    try {
+      const thnkVoice = this.voiceManager.prepareAdmission({
+        ...identity,
+        players: [...this.session.roster],
+      });
+      return thnkVoice
+        ? { thnkIdentity: identity, thnkVoice }
+        : { thnkIdentity: identity };
+    } catch (error) {
+      const errorCode =
+        error instanceof VoiceError ? error.code : "voice_unavailable";
+      this.emit("voice-error", { code: errorCode });
+      return {
+        thnkIdentity: identity,
+        thnkVoice: { available: false, errorCode },
+      };
+    }
   }
 
   playerConnected(identity, connectionId) {
@@ -210,6 +231,7 @@ class SessionManager extends EventEmitter {
       connectionId,
       joinedAt: new Date(this.now()).toISOString(),
     });
+    this.voiceManager.activate(identity.admissionId, connectionId);
     this.outbox.enqueue("player.joined", this.session.sessionId, {
       playerId: identity.playerId,
       connectionId,
@@ -222,6 +244,7 @@ class SessionManager extends EventEmitter {
     const active = this.activePlayers.get(identity.playerId);
     if (!active || active.connectionId !== connectionId) return;
     this.activePlayers.delete(identity.playerId);
+    this.voiceManager.revokeAdmission(identity.admissionId);
     this.outbox.enqueue("player.left", this.session.sessionId, {
       playerId: identity.playerId,
       connectionId,
@@ -252,6 +275,7 @@ class SessionManager extends EventEmitter {
     if (!this.session || this.session.status !== "active")
       throw new BridgeError("session_not_active", 409);
     this.session.status = "ending";
+    this.voiceManager.reset();
     const drain = (async () => {
       this.emit("session-ending", { reason });
       const playersDrained = await this.waitForPlayersDrained();
@@ -279,14 +303,37 @@ class SessionManager extends EventEmitter {
       connectedPlayers: [...this.activePlayers.keys()],
       pendingPlayers: [...this.pendingByPlayer.keys()],
       webhook: this.outbox.stats(),
+      voice: this.voiceManager.getPublicState(),
     };
+  }
+
+  refreshVoice(authorizationHeader) {
+    if (!this.enabled || !this.session || this.session.status !== "active")
+      throw new VoiceError("session_not_active", 503);
+    return this.voiceManager.refresh(authorizationHeader);
   }
 }
 
+const bridgeEnabled = process.env.THNK_BRIDGE_ENABLED === "true";
+const voiceEnabled = process.env.THNK_VOICE_ENABLED === "true";
+if (voiceEnabled && !bridgeEnabled)
+  throw new Error("THNK_VOICE_ENABLED requires THNK_BRIDGE_ENABLED=true.");
+const voiceManager = new VoiceTokenManager({
+  enabled: voiceEnabled,
+  appId: process.env.AGORA_APP_ID,
+  appCertificate: process.env.AGORA_APP_CERTIFICATE,
+  tokenUrl: process.env.THNK_VOICE_TOKEN_URL,
+  allowInsecureLoopback:
+    process.env.THNK_ALLOW_INSECURE_VOICE_TOKEN_URL === "true",
+  tokenLifetimeSeconds: process.env.THNK_VOICE_TOKEN_TTL_SECONDS || 600,
+  minRefreshIntervalMs: process.env.THNK_VOICE_MIN_REFRESH_INTERVAL_MS || 5_000,
+  maxRefreshesPerMinute: process.env.THNK_VOICE_MAX_REFRESHES_PER_MINUTE || 8,
+});
 const sessionManager = new SessionManager({
-  enabled: process.env.THNK_BRIDGE_ENABLED === "true",
+  enabled: bridgeEnabled,
   webhookSecret: process.env.THNK_WEBHOOK_SECRET,
   allowInsecureCallbacks: process.env.THNK_ALLOW_INSECURE_CALLBACKS === "true",
+  voiceManager,
 });
 
 module.exports = { BridgeError, SessionManager, sessionManager };

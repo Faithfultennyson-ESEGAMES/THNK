@@ -4,14 +4,22 @@ const { BridgeError } = require("./session-manager.cjs");
 
 const MAX_BODY_BYTES = 64 * 1024;
 
-const sendJson = (response, status, body) => {
+const sendJson = (response, status, body, headers = {}) => {
   const encoded = Buffer.from(JSON.stringify(body));
   response.writeHead(status, {
     "content-type": "application/json",
     "content-length": encoded.length,
     "cache-control": "no-store",
+    ...headers,
   });
   response.end(encoded);
+};
+
+const voiceHeaders = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "POST, OPTIONS",
+  "access-control-allow-headers": "authorization, content-type",
+  "access-control-max-age": "600",
 };
 
 const authorized = (request, expectedToken) => {
@@ -60,6 +68,35 @@ const createControlServer = ({
   http.createServer(async (request, response) => {
     const path = new URL(request.url, "http://127.0.0.1").pathname;
     try {
+      if (request.method === "OPTIONS" && path === "/v1/voice/token") {
+        response.writeHead(204, voiceHeaders);
+        response.end();
+        return;
+      }
+      if (path === "/v1/voice/token") {
+        if (request.method !== "POST")
+          return sendJson(
+            response,
+            405,
+            { error: "method_not_allowed" },
+            voiceHeaders
+          );
+        try {
+          return sendJson(
+            response,
+            200,
+            sessionManager.refreshVoice(request.headers.authorization),
+            voiceHeaders
+          );
+        } catch (error) {
+          const status = Number.isInteger(error?.status) ? error.status : 500;
+          const code = error?.code || "internal_error";
+          const headers = { ...voiceHeaders };
+          if (error?.retryAfterSeconds)
+            headers["retry-after"] = String(error.retryAfterSeconds);
+          return sendJson(response, status, { error: code }, headers);
+        }
+      }
       if (request.method === "GET" && path === "/health/live")
         return sendJson(response, 200, { status: "live" });
       if (request.method === "GET" && path === "/health/ready")
