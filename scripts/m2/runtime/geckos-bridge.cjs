@@ -31,8 +31,14 @@ exports.createServer = (options) => {
 exports.playerConnected = (identity, connectionId) =>
   sessionManager.playerConnected(identity, connectionId);
 
-exports.playerDisconnected = (identity, connectionId) =>
-  sessionManager.playerDisconnected(identity, connectionId);
+exports.playerDisconnected = (identity, connectionId, document) =>
+  sessionManager.playerDisconnected(identity, connectionId, document);
+
+exports.playerDocumentChanged = (identity, document) =>
+  sessionManager.playerDocumentChanged(identity, document);
+
+exports.reportTrustViolation = (playerId, violationType) =>
+  sessionManager.reportTrustViolation(playerId, violationType);
 
 exports.onSessionEnding = (callback) => {
   sessionManager.on("session-ending", callback);

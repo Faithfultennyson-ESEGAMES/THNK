@@ -12,6 +12,10 @@ import {
 import { getTickRate } from "utils/Settings";
 import { setupSceneAsServer } from "server/SetupServerScene";
 import { ServerAdapter } from "adapters/Adapter";
+import {
+  AUTHORITATIVE_EDIT_MESSAGE,
+  AUTHORITATIVE_EDIT_VIOLATION,
+} from "utils/TrustProtocol";
 
 const logger = new gdjs.Logger("THNK - Server");
 const runServerTickPreEvent = (runtimeScene: gdjs.RuntimeScene) => {
@@ -35,6 +39,10 @@ const runServerTickPreEvent = (runtimeScene: gdjs.RuntimeScene) => {
           ) as ClientInputMessage;
           const name = clientMessage.name();
           if (!name) continue;
+          if (name === AUTHORITATIVE_EDIT_MESSAGE) {
+            adapter.reportTrustViolation(userID, AUTHORITATIVE_EDIT_VIOLATION);
+            continue;
+          }
           const serializedExtraData = clientMessage.contentArray();
           addSerializedMessageToTheQueue(userID, name, serializedExtraData);
           continue;

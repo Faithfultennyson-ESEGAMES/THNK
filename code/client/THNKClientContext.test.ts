@@ -27,7 +27,10 @@ test("restores scene State changed by client events", () => {
   score.setNumber(2);
   context.captureAuthoritativeState();
   score.setNumber(999);
+  expect(context.consumeAuthoritativeEditViolation(10_000)).toBe(true);
+  expect(context.consumeAuthoritativeEditViolation(10_001)).toBe(false);
   context.restoreAuthoritativeState();
 
   expect(variables.get("State").getChild("Score").getAsNumber()).toBe(2);
+  expect(context.consumeAuthoritativeEditViolation(20_000)).toBe(false);
 });

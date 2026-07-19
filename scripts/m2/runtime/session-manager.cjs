@@ -7,7 +7,12 @@ const {
   validIdentifier,
 } = require("./jwt-verifier.cjs");
 const { WebhookOutbox } = require("./webhook-outbox.cjs");
-const { VoiceError, VoiceTokenManager } = require("./voice-token-manager.cjs");
+const {
+  VoiceError,
+  VoiceTokenManager,
+  validateExternalGrant,
+} = require("./voice-token-manager.cjs");
+const { PlayerProfileClient } = require("./player-profile-client.cjs");
 
 class BridgeError extends Error {
   constructor(code, status = 400) {
@@ -44,6 +49,7 @@ class SessionManager extends EventEmitter {
     outboxOptions = {},
     playerDrainTimeoutMs = 3_000,
     voiceManager = new VoiceTokenManager(),
+    profileClient = new PlayerProfileClient(),
     runtimeIdentity = {},
   } = {}) {
     super();
@@ -56,6 +62,7 @@ class SessionManager extends EventEmitter {
     this.outboxOptions = outboxOptions;
     this.playerDrainTimeoutMs = playerDrainTimeoutMs;
     this.voiceManager = voiceManager;
+    this.profileClient = profileClient;
     this.runtimeIdentity = Object.freeze({ ...runtimeIdentity });
     this.gameReady = false;
     this.session = undefined;
@@ -65,6 +72,11 @@ class SessionManager extends EventEmitter {
     this.pendingAdmissions = new Map();
     this.pendingByPlayer = new Map();
     this.activePlayers = new Map();
+    this.documentsByAdmission = new Map();
+    this.pendingProfileWrites = new Set();
+    this.profileWriteTails = new Map();
+    this.recentViolations = new Map();
+    this.sessionCreationPending = false;
   }
 
   setGameReady(value = true) {
@@ -144,6 +156,49 @@ class SessionManager extends EventEmitter {
         )
       );
     }
+    const voiceGrants = new Map();
+    if (input.voiceGrants !== undefined) {
+      if (
+        !input.voiceGrants ||
+        typeof input.voiceGrants !== "object" ||
+        Array.isArray(input.voiceGrants)
+      )
+        throw new BridgeError("invalid_voice_grants");
+      const suppliedPlayers = Object.keys(input.voiceGrants);
+      if (
+        suppliedPlayers.length !== roster.size ||
+        suppliedPlayers.some((playerId) => !roster.has(playerId))
+      )
+        throw new BridgeError("voice_grants_must_match_roster");
+      try {
+        for (const playerId of roster.keys())
+          voiceGrants.set(
+            playerId,
+            validateExternalGrant(input.voiceGrants[playerId], this.now())
+          );
+      } catch (error) {
+        if (error instanceof VoiceError)
+          throw new BridgeError(error.code, error.status);
+        throw error;
+      }
+      const first = voiceGrants.values().next().value;
+      const voiceUids = new Set();
+      const voiceTokens = new Set();
+      const refreshCapabilities = new Set();
+      for (const grant of voiceGrants.values()) {
+        if (grant.appId !== first.appId || grant.channel !== first.channel)
+          throw new BridgeError("voice_grants_not_session_isolated");
+        if (
+          voiceUids.has(grant.uid) ||
+          voiceTokens.has(grant.token) ||
+          refreshCapabilities.has(grant.refreshCapability)
+        )
+          throw new BridgeError("voice_grants_not_player_isolated");
+        voiceUids.add(grant.uid);
+        voiceTokens.add(grant.token);
+        refreshCapabilities.add(grant.refreshCapability);
+      }
+    }
     if (input.reconnectPolicy && input.reconnectPolicy !== "fresh-token")
       throw new BridgeError("unsupported_reconnect_policy");
 
@@ -170,6 +225,10 @@ class SessionManager extends EventEmitter {
     this.pendingAdmissions.clear();
     this.pendingByPlayer.clear();
     this.activePlayers.clear();
+    this.documentsByAdmission.clear();
+    this.pendingProfileWrites.clear();
+    this.profileWriteTails.clear();
+    this.recentViolations.clear();
     this.voiceManager.reset();
     this.outbox = new WebhookOutbox({
       callbackUrl,
@@ -193,6 +252,7 @@ class SessionManager extends EventEmitter {
       callbackUrl,
       reconnectPolicy: "fresh-token",
       roster,
+      voiceGrants,
       metadata:
         input.metadata && typeof input.metadata === "object"
           ? structuredClone(input.metadata)
@@ -213,6 +273,91 @@ class SessionManager extends EventEmitter {
         },
       });
     return this.getPublicState();
+  }
+
+  async prepareSession(input) {
+    if (this.sessionCreationPending)
+      throw new BridgeError("session_creation_in_progress", 409);
+    this.sessionCreationPending = true;
+    try {
+      this.validateSessionPreflight(input);
+      if (this.profileClient.enabled) {
+        if (!Array.isArray(input?.players) || input.players.length < 1)
+          throw new BridgeError("players_required");
+        const playerIds = input.players.map((player) =>
+          typeof player === "string" ? player : player?.playerId
+        );
+        for (const playerId of playerIds)
+          if (!validIdentifier(playerId))
+            throw new BridgeError("invalid_player_id");
+        let blocked;
+        try {
+          blocked = await Promise.all(
+            playerIds.map((playerId) => this.profileClient.isBlocked(playerId))
+          );
+        } catch (error) {
+          throw new BridgeError(
+            error?.code || "player_profile_unavailable",
+            Number.isInteger(error?.status) ? error.status : 503
+          );
+        }
+        if (blocked.some(Boolean)) throw new BridgeError("player_blocked", 403);
+      }
+      return this.createSession(input);
+    } finally {
+      this.sessionCreationPending = false;
+    }
+  }
+
+  validateSessionPreflight(input) {
+    if (!this.enabled) throw new BridgeError("bridge_disabled", 404);
+    if (this.session && this.session.status !== "ended")
+      throw new BridgeError("session_already_active", 409);
+    if (!this.webhookSecret || this.webhookSecret.length < 32)
+      throw new BridgeError("webhook_secret_not_configured", 500);
+    if (!validIdentifier(input?.sessionId))
+      throw new BridgeError("invalid_session_id");
+    const runtime = this.runtimeIdentity;
+    if (input.gameId !== runtime.gameId)
+      throw new BridgeError("wrong_game", 409);
+    if (input.authorityId !== runtime.authorityId)
+      throw new BridgeError("wrong_authority", 409);
+    if ((input.mapId || "") !== (runtime.mapId || ""))
+      throw new BridgeError("wrong_map", 409);
+    if (input.serverBuildId !== runtime.serverBuildId)
+      throw new BridgeError("wrong_server_build", 409);
+    if (
+      input.compatibilityVersion !== runtime.compatibilityVersion ||
+      input.clientBuildId !== runtime.clientBuildId ||
+      input.protocolVersion !== runtime.protocolVersion
+    )
+      throw new BridgeError("client_update_required", 426);
+    if (!Array.isArray(input.players) || input.players.length < 1)
+      throw new BridgeError("players_required");
+    if (input.players.length > 256) throw new BridgeError("roster_too_large");
+    const seen = new Set();
+    for (const player of input.players) {
+      const playerId = typeof player === "string" ? player : player?.playerId;
+      if (!validIdentifier(playerId))
+        throw new BridgeError("invalid_player_id");
+      if (seen.has(playerId)) throw new BridgeError("duplicate_player_id");
+      seen.add(playerId);
+    }
+    validateCallbackUrl(input.callbackUrl, this.allowInsecureCallbacks);
+    try {
+      createJwtVerifier({
+        publicKey: input.tokenVerification?.publicKey,
+        keyId: input.tokenVerification?.keyId,
+        issuer: input.tokenVerification?.issuer,
+        audience: input.tokenVerification?.audience,
+        algorithm: input.tokenVerification?.algorithm || "RS256",
+        now: this.now,
+      });
+    } catch (error) {
+      if (error instanceof AdmissionError)
+        throw new BridgeError(error.code, error.status);
+      throw error;
+    }
   }
 
   authorize(authorizationHeader) {
@@ -258,6 +403,34 @@ class SessionManager extends EventEmitter {
     )
       throw new AdmissionError("player_already_connected", 409);
 
+    this.usedTokenIds.add(claims.jti);
+    const reservationId = `loading:${claims.jti}`;
+    this.pendingByPlayer.set(claims.playerId, reservationId);
+    if (this.profileClient.enabled)
+      return Promise.resolve(this.profileWriteTails.get(claims.playerId))
+        .catch(() => {})
+        .then(() =>
+          this.profileClient.loadDocument(claims.playerId, this.session.gameId)
+        )
+        .then((document) => this.finishAuthorization(claims, document))
+        .catch((error) => {
+          this.usedTokenIds.delete(claims.jti);
+          if (this.pendingByPlayer.get(claims.playerId) === reservationId)
+            this.pendingByPlayer.delete(claims.playerId);
+          throw new AdmissionError(
+            error.code || "player_profile_unavailable",
+            503
+          );
+        });
+    return this.finishAuthorization(claims, {});
+  }
+
+  finishAuthorization(claims, document) {
+    if (
+      this.session?.status !== "active" ||
+      !this.pendingByPlayer.get(claims.playerId)?.startsWith("loading:")
+    )
+      throw new AdmissionError("session_not_active", 503);
     const admissionId = this.randomUUID();
     const identity = Object.freeze({
       sessionId: claims.sessionId,
@@ -274,23 +447,35 @@ class SessionManager extends EventEmitter {
       protocolVersion: claims.protocolVersion,
       tags: claims.tags,
     });
-    this.usedTokenIds.add(claims.jti);
     this.pendingAdmissions.set(admissionId, identity);
     this.pendingByPlayer.set(claims.playerId, admissionId);
+    this.documentsByAdmission.set(admissionId, structuredClone(document));
     try {
+      const externalGrant = this.session.voiceGrants.get(claims.playerId);
+      const externalParticipants = externalGrant
+        ? [...this.session.voiceGrants].map(([playerId, grant]) => ({
+            playerId,
+            uid: grant.uid,
+          }))
+        : undefined;
       const thnkVoice = this.voiceManager.prepareAdmission({
         ...identity,
         players: [...this.session.roster.keys()],
+        externalGrant,
+        externalParticipants,
       });
-      return thnkVoice
-        ? { thnkIdentity: identity, thnkVoice }
-        : { thnkIdentity: identity };
+      return {
+        thnkIdentity: identity,
+        thnkPlayerDocument: structuredClone(document),
+        ...(thnkVoice ? { thnkVoice } : {}),
+      };
     } catch (error) {
       const errorCode =
         error instanceof VoiceError ? error.code : "voice_unavailable";
       this.emit("voice-error", { code: errorCode });
       return {
         thnkIdentity: identity,
+        thnkPlayerDocument: structuredClone(document),
         thnkVoice: { available: false, errorCode },
       };
     }
@@ -320,12 +505,14 @@ class SessionManager extends EventEmitter {
     return true;
   }
 
-  playerDisconnected(identity, connectionId) {
+  playerDisconnected(identity, connectionId, document) {
     if (!this.enabled || !identity) return;
     const active = this.activePlayers.get(identity.playerId);
     if (!active || active.connectionId !== connectionId) return;
     this.activePlayers.delete(identity.playerId);
+    if (document) this.queueProfileSave(identity, document);
     this.voiceManager.revokeAdmission(identity.admissionId);
+    this.documentsByAdmission.delete(identity.admissionId);
     this.outbox.enqueue("player.left", this.session.sessionId, {
       playerId: identity.playerId,
       connectionId,
@@ -352,6 +539,61 @@ class SessionManager extends EventEmitter {
     return result;
   }
 
+  queueProfileSave(identity, document) {
+    if (!this.profileClient.enabled || !identity) return Promise.resolve();
+    const savedDocument = structuredClone(document);
+    this.documentsByAdmission.set(identity.admissionId, savedDocument);
+    const previous = this.profileWriteTails.get(identity.playerId);
+    const write = Promise.resolve(previous)
+      .catch(() => {})
+      .then(() =>
+        this.profileClient.saveDocument(
+          identity.playerId,
+          identity.gameId,
+          identity.sessionId,
+          savedDocument
+        )
+      )
+      .catch((error) => {
+        this.emit("profile-error", {
+          code: error.code || "player_profile_unavailable",
+          playerId: identity.playerId,
+        });
+        return false;
+      })
+      .finally(() => {
+        this.pendingProfileWrites.delete(write);
+        if (this.profileWriteTails.get(identity.playerId) === write)
+          this.profileWriteTails.delete(identity.playerId);
+      });
+    this.pendingProfileWrites.add(write);
+    this.profileWriteTails.set(identity.playerId, write);
+    return write;
+  }
+
+  playerDocumentChanged(identity, document) {
+    const active = this.activePlayers.get(identity?.playerId);
+    if (!active || active.admissionId !== identity.admissionId) return false;
+    void this.queueProfileSave(identity, document);
+    return true;
+  }
+
+  reportTrustViolation(playerId, violationType) {
+    const active = this.activePlayers.get(playerId);
+    if (!active || typeof violationType !== "string") return false;
+    const key = `${active.admissionId}\0${violationType}`;
+    const lastReported = this.recentViolations.get(key);
+    if (lastReported !== undefined && this.now() - lastReported < 5_000)
+      return false;
+    this.recentViolations.set(key, this.now());
+    this.outbox.enqueue("trust.violation", this.session.sessionId, {
+      playerId,
+      connectionId: active.connectionId,
+      violationType,
+    });
+    return true;
+  }
+
   endSession(reason = "requested") {
     if (!this.enabled) throw new BridgeError("bridge_disabled", 404);
     if (!this.session || this.session.status !== "active")
@@ -361,6 +603,7 @@ class SessionManager extends EventEmitter {
     const drain = (async () => {
       this.emit("session-ending", { reason });
       const playersDrained = await this.waitForPlayersDrained();
+      await Promise.allSettled([...this.pendingProfileWrites]);
       const { delivery } = this.outbox.enqueue(
         "session.ended",
         this.session.sessionId,
@@ -419,11 +662,19 @@ const voiceManager = new VoiceTokenManager({
   minRefreshIntervalMs: process.env.THNK_VOICE_MIN_REFRESH_INTERVAL_MS || 5_000,
   maxRefreshesPerMinute: process.env.THNK_VOICE_MAX_REFRESHES_PER_MINUTE || 8,
 });
+const profileClient = new PlayerProfileClient({
+  baseUrl: process.env.THNK_PLAYER_PROFILE_URL,
+  serviceToken: process.env.THNK_PLAYER_PROFILE_TOKEN,
+  allowInsecureLoopback:
+    process.env.THNK_ALLOW_INSECURE_PLAYER_PROFILE_URL === "true",
+  timeoutMs: process.env.THNK_PLAYER_PROFILE_TIMEOUT_MS || 3_000,
+});
 const sessionManager = new SessionManager({
   enabled: bridgeEnabled,
   webhookSecret: process.env.THNK_WEBHOOK_SECRET,
   allowInsecureCallbacks: process.env.THNK_ALLOW_INSECURE_CALLBACKS === "true",
   voiceManager,
+  profileClient,
   runtimeIdentity: {
     gameId: process.env.THNK_RUNTIME_GAME_ID,
     authorityId: process.env.THNK_AUTHORITY_ID,

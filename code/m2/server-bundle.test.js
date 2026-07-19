@@ -145,6 +145,7 @@ test("validates the bundle hash and detects tampering", () => {
     "bundle-identity.cjs",
     "control-server.cjs",
     "jwt-verifier.cjs",
+    "player-profile-client.cjs",
     "session-manager.cjs",
     "voice-token-manager.cjs",
     "webhook-outbox.cjs",
@@ -202,6 +203,12 @@ test("validates the bundle hash and detects tampering", () => {
       provider: "agora",
       tokenEndpoint: "/v1/voice/token",
       enabledByEnvironment: "THNK_VOICE_ENABLED",
+    },
+    playerProfile: {
+      documentApi: "/internal/players/:id/document?gameId=",
+      blockedApi: "/internal/players/:id/blocked",
+      enabledByEnvironment: "THNK_PLAYER_PROFILE_URL",
+      credentialEnvironment: "THNK_PLAYER_PROFILE_TOKEN",
     },
     contentHash: { algorithm: "sha256", value: "" },
   };

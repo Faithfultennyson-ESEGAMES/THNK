@@ -40,6 +40,14 @@ flowchart LR
 | Horizontal scaling | Multiple Matchmaking instances may run concurrently against one shared Redis. Queue pop/claim operations must be atomic (Lua script or Redis transaction) so two instances cannot double-place the same player. | Directly requested: "we can have multiple matchmaking servers for load balancing... because they're using the same Redis". |
 | Team/party tagging | Matchmaking assigns an opaque `tags` map (e.g. `{ "team": "A" }`) per player as part of the roster it sends to the Bridge; THNK core carries it through the signed admission token without interpreting it. | Confirmed via code review that no team/party concept exists anywhere in the reference system either — this is new design, not an adaptation. Keeps THNK core ignorant of any specific team-size/party-size assumption. |
 | Voice token issuance | THNK Matchmaking holds the Agora App ID/Certificate and mints tokens (mirrors the reference system's single `/agora/token`-style endpoint), issuing a voice grant to the Bridge at session-start time rather than the Bridge minting its own from bundle-local credentials. | Avoids two independent Agora credential configurations (Matchmaking's and each exported server bundle's) for the same deployment; the exported bundle's own M4 voice path remains available as a fallback for standalone THNK use without a matchmaker. |
+
+M6 Core contract: session creation sends an all-or-none `voiceGrants` object
+keyed by canonical roster player ID. Every grant contains `appId`, one shared
+session `channel`, a distinct `uid`/`token`, `expiresAt`, a player-specific
+`refreshUrl`/`refreshCapability`, and `refreshOwner: "matchmaker"`. Matchmaking
+owns that refresh endpoint and its authorization; Core validates/passes the
+grant but never refreshes or proxies it. A grant may remain stable for that
+player across a fresh gameplay reconnect until Matchmaking replaces/expires it.
 | World/global chat | Ephemeral, TTL-deleted (default 60 minutes, configurable), stored in Redis, lives in this repository. | Matches the explicit requirement and mirrors the reference system's proven `GLOBAL_CHAT_TTL_MINUTES` cleanup design; no durable storage needed for something that expires anyway. |
 | Friend DMs | Not stored here. Matchmaking's realtime gateway delivers them live (push), but the message itself is written/read through Player Profile's API. | Friend messages are identity-linked and expected to persist — that data ownership belongs with Player Profile, consistent with the repo split. |
 | QoS measurement | Application-level HTTPS/WebSocket round-trip probes against small regional endpoints; no raw ICMP (browsers cannot do this). Bandwidth measurement is opt-in per queue config, off by default. | Browsers cannot issue ICMP pings; a full speed test before every match delays matchmaking and costs the player data for no default benefit. |

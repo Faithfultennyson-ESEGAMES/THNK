@@ -1,6 +1,6 @@
 # THNK Server Platform — Implementation Plan
 
-**Status:** Draft v1 plan (M0-M5 complete; M6-M7 retain the cross-service and release-candidate work agreed after M4)
+**Status:** Draft v1 plan (M0-M6 complete; M7 retains release-candidate hardening)
 
 **Prepared:** 2026-07-18
 
@@ -14,11 +14,12 @@ trust contract, not a misleading self-signed manifest. The exporter derives
 registers that trusted ID, and the runtime can enforce it through
 `THNK_EXPECTED_SERVER_BUILD_ID`. In bridge mode the control API is started
 before GDevelop, validates the complete game/authority/map/build/version
-assignment, and only then launches the selected authority. M6 still owns the
-new detectable illegal-edit violation path, per-player pre-issued Agora grants
-and their refresh contract, blocked-player checks, and Player Profile document
-hooks. The two companion plan files now exist here as specifications; their
-service implementations remain separate repositories.
+assignment, and only then launches the selected authority. M6 adds the
+official-client illegal-edit detector and signed `trust.violation`, ordered
+game-scoped Player Profile document load/save, roster blocked preflight, and
+all-or-none per-player external Agora grants whose refresh owner is explicitly
+the matchmaker. The two companion plan files remain specifications; their
+service implementations are separate repositories.
 
 ## 1. What we are building
 
@@ -294,6 +295,12 @@ authority, build, or client version before creating a player connection.
 - Full repository gates (frozen install, TypeScript, Jest, generated-extension build, fixture/bundle validation) pass, and the new adversarial cases (wrong authority, wrong build, wrong compatibility version, unknown authority ID) have dedicated regression tests, consistent with M1-M4's testing discipline.
 
 ### M6 — Cross-service integration hooks
+
+**Implementation status (2026-07-19):** Complete on
+`platform/m6-cross-service-hooks`. Player Profile preflight/documents,
+server-only GDevelop document writes, detectable signed trust violations, and
+roster-keyed external Agora grants pass unit, adversarial, exported Windows,
+and regression gates. See `docs/project/M6-CROSS-SERVICE-HOOKS.md`.
 
 **Why this milestone exists:** THNK Matchmaking and THNK Player Profile are
 separate repositories, but each depends on specific hooks that only Core can

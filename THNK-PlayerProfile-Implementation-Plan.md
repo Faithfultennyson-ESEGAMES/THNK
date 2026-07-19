@@ -120,6 +120,14 @@ trust_violations (
 - `PUT /internal/players/:id/document?gameId=` — write-through on relevant events/session end (§2)
 - `PUT /internal/games/:gameId/schema` — developer registers field names/types
 
+M6 Core fixes the wire shape for the companion implementation: document GET
+returns `{ "document": { ... } }`; document PUT accepts
+`{ "document": { ... }, "sessionId": "..." }`; blocked GET returns
+`{ "blocked": boolean }`. Documents are game-scoped JSON objects capped at
+64 KiB. Calls use a dedicated service credential and bounded timeout. Core
+serializes writes per player and waits for any local in-flight write before a
+reconnect reload, preventing stale write reordering.
+
 ### Friends
 - `GET /friends`, `GET /friends/requests`, `POST /friends/request`, `POST /friends/accept`, `POST /friends/decline`, `DELETE /friends/:id`, `GET /friends/search?q=`
 - All modeled directly on the reference system's proven friends routes.

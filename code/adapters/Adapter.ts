@@ -50,6 +50,9 @@ export abstract class ServerAdapter {
   /** Called when the adapter is no longer needed to gracefully shutdown. */
   abstract close(): void;
 
+  /** Report a client-originated attempt to mutate authoritative state. */
+  reportTrustViolation(_userID: string, _violationType: string): void {}
+
   sendServerMessageTo(
     userID: string,
     builder: Builder,

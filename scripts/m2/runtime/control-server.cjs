@@ -115,7 +115,10 @@ const createControlServer = ({
           session: sessionManager.getPublicState(),
         });
       if (request.method === "POST" && path === "/v1/session") {
-        sessionManager.createSession(await readJson(request));
+        const input = await readJson(request);
+        if (typeof sessionManager.prepareSession === "function")
+          await sessionManager.prepareSession(input);
+        else sessionManager.createSession(input);
         await onSessionStart();
         return sendJson(response, 201, {
           session: sessionManager.getPublicState(),

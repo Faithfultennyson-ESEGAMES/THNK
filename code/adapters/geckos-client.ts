@@ -50,6 +50,17 @@ THNK.GeckosClientAdapter = class GeckosClientAdapter extends (
         void sessionVoice.handleAdmission(
           (this.connection!.userData as { thnkVoice?: VoiceGrant })?.thnkVoice
         );
+        const admission = this.connection!.userData as {
+          thnkIdentity?: { playerId?: string };
+          thnkPlayerDocument?: unknown;
+        };
+        if (admission.thnkIdentity?.playerId) {
+          THNK.players.setPlayerDocument(
+            admission.thnkIdentity.playerId,
+            admission.thnkPlayerDocument || {}
+          );
+          THNK.players.switchPlayerContext(admission.thnkIdentity.playerId);
+        }
         resolve();
       })
     );

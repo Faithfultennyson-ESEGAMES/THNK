@@ -20,7 +20,19 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
   bridge:
     | {
         playerConnected: (identity: unknown, connectionId: string) => boolean;
-        playerDisconnected: (identity: unknown, connectionId: string) => void;
+        playerDisconnected: (
+          identity: unknown,
+          connectionId: string,
+          document?: unknown
+        ) => void;
+        playerDocumentChanged: (
+          identity: unknown,
+          document: unknown
+        ) => boolean;
+        reportTrustViolation: (
+          playerId: string,
+          violationType: string
+        ) => boolean;
         onSessionEnding: (callback: () => void) => () => void;
       }
     | undefined;
@@ -57,7 +69,19 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
           loadGeckos: () => Promise<void>;
           createServer: typeof GeckosType;
           playerConnected: (identity: unknown, connectionId: string) => boolean;
-          playerDisconnected: (identity: unknown, connectionId: string) => void;
+          playerDisconnected: (
+            identity: unknown,
+            connectionId: string,
+            document?: unknown
+          ) => void;
+          playerDocumentChanged: (
+            identity: unknown,
+            document: unknown
+          ) => boolean;
+          reportTrustViolation: (
+            playerId: string,
+            violationType: string
+          ) => boolean;
           onSessionEnding: (callback: () => void) => () => void;
         }>(thnkGeckosBridgePath);
         await bridge.loadGeckos();
@@ -142,6 +166,9 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
         channel.id || this.connectionIDs.createClientID();
       const identity = (channel.userData as { thnkIdentity?: unknown })
         ?.thnkIdentity;
+      const playerDocument = (
+        channel.userData as { thnkPlayerDocument?: unknown }
+      )?.thnkPlayerDocument;
       // Generate a simple ID that is certainly unique,
       // yet not easily guessable (as that can open up
       // an attack vector in some cases)
@@ -156,6 +183,9 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
             | undefined
         )?.tags
       );
+      THNK.players.setPlayerDocument(id, playerDocument || {}, (document) => {
+        if (identity) this.bridge?.playerDocumentChanged(identity, document);
+      });
 
       if (!this.onConnection(id)) {
         THNK.players.clearPlayerTags(id);
@@ -182,10 +212,15 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
       );
       channel.onRaw((message) => this.onMessage(id, message as Uint8Array));
       channel.onDisconnect(() => {
+        const finalDocument = THNK.players.getPlayerDocument(id);
         this.onDisconnection(id);
         this.channels.delete(id);
         if (identity)
-          this.bridge?.playerDisconnected(identity, transportConnectionId);
+          this.bridge?.playerDisconnected(
+            identity,
+            transportConnectionId,
+            finalDocument
+          );
       });
     });
 
@@ -217,6 +252,10 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
     // Force close the server when closing the preview window
     this.beforeUnloadHandler = () => this.close();
     window.addEventListener("beforeunload", this.beforeUnloadHandler);
+  }
+
+  reportTrustViolation(userID: string, violationType: string): void {
+    this.bridge?.reportTrustViolation(userID, violationType);
   }
 
   close() {

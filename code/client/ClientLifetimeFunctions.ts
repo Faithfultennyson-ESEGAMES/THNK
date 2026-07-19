@@ -8,6 +8,8 @@ import { applyGameStateSnapshotToScene } from "client/ApplyGameStateSnapshot";
 import { applySceneUpdateToScene } from "client/ApplySceneUpdate";
 import { THNKClientContext } from "./THNKClientContext";
 import { loadScene, pauseScene } from "utils/LoadScene";
+import { sendClientMessage } from "client/ClientMessageSender";
+import { AUTHORITATIVE_EDIT_MESSAGE } from "utils/TrustProtocol";
 
 const logger = new gdjs.Logger("THNK - Client");
 const runClientTickPreEvent = async (runtimeScene: gdjs.RuntimeScene) => {
@@ -96,6 +98,12 @@ const runClientTickPreEvent = async (runtimeScene: gdjs.RuntimeScene) => {
 const restoreAuthoritativeStatePostEvent = (
   runtimeScene: gdjs.RuntimeScene
 ) => {
+  if (runtimeScene.thnkClient?.consumeAuthoritativeEditViolation())
+    sendClientMessage(
+      runtimeScene.thnkClient.adapter,
+      AUTHORITATIVE_EDIT_MESSAGE,
+      new gdjs.Variable()
+    );
   runtimeScene.thnkClient?.restoreAuthoritativeState();
 };
 

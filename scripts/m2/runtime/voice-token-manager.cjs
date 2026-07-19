@@ -51,6 +51,57 @@ const channelForSession = (sessionId) => `thnk-${hash(sessionId).slice(0, 40)}`;
 const uidForPlayer = (sessionId, playerId) =>
   `thnk-u-${hash(`${sessionId}\0${playerId}`).slice(0, 40)}`;
 
+const validateExternalGrant = (grant, now = Date.now()) => {
+  if (!grant || typeof grant !== "object")
+    throw new VoiceError("invalid_external_voice_grant");
+  if (!APP_CREDENTIAL_PATTERN.test(grant.appId || ""))
+    throw new VoiceError("invalid_external_voice_grant");
+  if (
+    typeof grant.channel !== "string" ||
+    grant.channel.length < 1 ||
+    grant.channel.length > 64 ||
+    typeof grant.uid !== "string" ||
+    grant.uid.length < 1 ||
+    grant.uid.length > 255 ||
+    typeof grant.token !== "string" ||
+    grant.token.length < 16 ||
+    grant.token.length > 4096
+  )
+    throw new VoiceError("invalid_external_voice_grant");
+  const expiresAt = Date.parse(grant.expiresAt);
+  if (!Number.isFinite(expiresAt) || expiresAt <= now + 30_000)
+    throw new VoiceError("external_voice_grant_expired");
+  if (grant.refreshOwner !== "matchmaker")
+    throw new VoiceError("invalid_voice_refresh_owner");
+  let refreshUrl;
+  try {
+    refreshUrl = new URL(grant.refreshUrl);
+  } catch {
+    throw new VoiceError("invalid_external_voice_grant");
+  }
+  if (
+    refreshUrl.protocol !== "https:" ||
+    refreshUrl.username ||
+    refreshUrl.password
+  )
+    throw new VoiceError("invalid_external_voice_grant");
+  if (
+    typeof grant.refreshCapability !== "string" ||
+    !/^[A-Za-z0-9_-]{32,256}$/.test(grant.refreshCapability)
+  )
+    throw new VoiceError("invalid_external_voice_grant");
+  return Object.freeze({
+    appId: grant.appId,
+    channel: grant.channel,
+    uid: grant.uid,
+    token: grant.token,
+    expiresAt: new Date(expiresAt).toISOString(),
+    refreshUrl: refreshUrl.toString(),
+    refreshCapability: grant.refreshCapability,
+    refreshOwner: "matchmaker",
+  });
+};
+
 class VoiceTokenManager {
   constructor({
     enabled = false,
@@ -74,17 +125,26 @@ class VoiceTokenManager {
     this.capabilityHashByAdmission = new Map();
 
     if (!enabled) return;
-    if (!APP_CREDENTIAL_PATTERN.test(appId || ""))
+    const hasAppId = Boolean(appId);
+    const hasCertificate = Boolean(appCertificate);
+    if (hasAppId !== hasCertificate)
       throw new Error(
-        "AGORA_APP_ID must contain exactly 32 hexadecimal characters."
+        "AGORA_APP_ID and AGORA_APP_CERTIFICATE must either both be configured or both be omitted."
       );
-    if (!APP_CREDENTIAL_PATTERN.test(appCertificate || ""))
-      throw new Error(
-        "AGORA_APP_CERTIFICATE must contain exactly 32 hexadecimal characters."
-      );
-    this.appId = appId;
-    this.appCertificate = appCertificate;
-    this.tokenUrl = validateTokenUrl(tokenUrl, allowInsecureLoopback);
+    this.localMintingEnabled = hasAppId && hasCertificate;
+    if (this.localMintingEnabled) {
+      if (!APP_CREDENTIAL_PATTERN.test(appId || ""))
+        throw new Error(
+          "AGORA_APP_ID must contain exactly 32 hexadecimal characters."
+        );
+      if (!APP_CREDENTIAL_PATTERN.test(appCertificate || ""))
+        throw new Error(
+          "AGORA_APP_CERTIFICATE must contain exactly 32 hexadecimal characters."
+        );
+      this.appId = appId;
+      this.appCertificate = appCertificate;
+      this.tokenUrl = validateTokenUrl(tokenUrl, allowInsecureLoopback);
+    }
     this.tokenLifetimeSeconds = integerOption(
       "THNK_VOICE_TOKEN_TTL_SECONDS",
       tokenLifetimeSeconds,
@@ -140,8 +200,28 @@ class VoiceTokenManager {
     };
   }
 
-  prepareAdmission({ sessionId, playerId, admissionId, players = [] }) {
+  prepareAdmission({
+    sessionId,
+    playerId,
+    admissionId,
+    players = [],
+    externalGrant,
+    externalParticipants,
+  }) {
+    if (externalGrant) {
+      const grant = validateExternalGrant(externalGrant, this.now());
+      this.capabilityHashByAdmission.set(
+        admissionId,
+        `external:${admissionId}`
+      );
+      return {
+        ...grant,
+        participants: externalParticipants || [],
+      };
+    }
     if (!this.enabled) return undefined;
+    if (!this.localMintingEnabled)
+      throw new VoiceError("voice_local_credentials_not_configured", 503);
     const capability = this.randomBytes(32).toString("base64url");
     const capabilityHash = hash(capability);
     const record = {
@@ -165,6 +245,7 @@ class VoiceTokenManager {
         })),
         refreshUrl: this.tokenUrl,
         refreshCapability: capability,
+        refreshOwner: "bridge",
       };
     } catch (error) {
       this.revokeAdmission(admissionId);
@@ -173,8 +254,9 @@ class VoiceTokenManager {
   }
 
   activate(admissionId, connectionId) {
-    if (!this.enabled) return;
     const capabilityHash = this.capabilityHashByAdmission.get(admissionId);
+    if (capabilityHash?.startsWith("external:")) return;
+    if (!this.enabled) return;
     const record = this.recordsByCapabilityHash.get(capabilityHash);
     if (!record || record.state !== "pending") return;
     record.state = "active";
@@ -182,9 +264,10 @@ class VoiceTokenManager {
   }
 
   revokeAdmission(admissionId) {
-    if (!this.enabled) return;
     const capabilityHash = this.capabilityHashByAdmission.get(admissionId);
     this.capabilityHashByAdmission.delete(admissionId);
+    if (capabilityHash?.startsWith("external:")) return;
+    if (!this.enabled) return;
     if (capabilityHash) this.recordsByCapabilityHash.delete(capabilityHash);
   }
 
@@ -240,5 +323,6 @@ module.exports = {
   VoiceTokenManager,
   channelForSession,
   uidForPlayer,
+  validateExternalGrant,
   validateTokenUrl,
 };

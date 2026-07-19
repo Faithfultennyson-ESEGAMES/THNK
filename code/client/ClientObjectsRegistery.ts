@@ -77,6 +77,29 @@ export class ClientObjectsRegistery {
     }
   }
 
+  hasAuthoritativeEdits(): boolean {
+    for (const [id, state] of this.authoritativeStates) {
+      const object = this.objectsRegistery.get(id);
+      if (!object) continue;
+      if (
+        object.getX() !== state.x ||
+        object.getY() !== state.y ||
+        object.getAngle() !== state.angle ||
+        object.getWidth() !== state.width ||
+        object.getHeight() !== state.height ||
+        object.getLayer() !== state.layer ||
+        object.getZOrder() !== state.zOrder ||
+        JSON.stringify(object.getVariables().get("State").toJSObject()) !==
+          JSON.stringify(state.state) ||
+        JSON.stringify(
+          object.getVariables().get("PlayerState").toJSObject()
+        ) !== JSON.stringify(state.playerState)
+      )
+        return true;
+    }
+    return false;
+  }
+
   clear() {
     this.objectsRegistery.forEach((runtimeObject) =>
       runtimeObject.deleteFromScene(this.runtimeScene)

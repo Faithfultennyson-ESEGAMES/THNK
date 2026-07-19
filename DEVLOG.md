@@ -376,7 +376,7 @@ project-wide timeline and must be updated as part of every milestone commit.
 
 - M4 implementation was committed on branch `platform/m4-agora-voice` as
   `e76d5f458876402b07e1180361365a688b81a8fd` (`feat: add secure Agora session
-  voice`).
+voice`).
 - The user-owned `.vscode/settings.json` change was deliberately excluded from
   the M4 commit.
 - Before commit, 849 tracked and untracked repository files were scanned for
@@ -465,3 +465,63 @@ project-wide timeline and must be updated as part of every milestone commit.
 - M6 still owns real illegal-edit detection for `trust.violation`, roster-keyed
   pre-issued Agora grants and refresh ownership, Player Profile documents, and
   blocked-player admission.
+
+## 2026-07-19 - M6 cross-service integration hooks
+
+### Player Profile boundary and documents
+
+- Started `platform/m6-cross-service-hooks` from M5 commit `edf57ef`; the two
+  companion services remain specifications/separate repositories.
+- Added an optional Player Profile client configured only by server environment
+  URL and an independent 32+ character service credential. HTTPS is required
+  outside explicitly enabled loopback development; requests have a 3-second
+  default timeout and documents have a 64 KiB bound.
+- The supervisor validates assignment identity, then checks the whole roster's
+  blocked status before GDevelop starts. A blocked fixture player returned
+  `player_blocked` while authority-ready/scene markers remained absent.
+- Signed admission now loads the player's game-scoped JSON document before
+  connection creation. Added typed GDevelop number/string/boolean/JSON reads
+  and `SetPlayerVariable`, which copies primitives/structures/arrays and throws
+  inside the extension if invoked from client code.
+- Serialized writes per player after review found that parallel PUTs could
+  otherwise finish out of order. Reconnect waits for in-flight persistence;
+  disconnect/session end perform a final flush. The fixture loaded XP 7,
+  server-set/persisted XP 8, and reloaded it for Bob without identity mixing.
+
+### Trust violation and external voice ownership
+
+- Added an official-client lifecycle detector for local authoritative scene and
+  synchronized-object edits. It reports a reserved violation before restoring
+  state; the server derives player identity from the authenticated connection.
+- Client/server cooldowns collapse a held Space edit into one incident. The
+  existing signed outbox delivered exactly one HMAC-verified
+  `trust.violation` with player, connection, type, session, and timestamp.
+- Documented the honest boundary: a fully modified client can remove its own
+  reporting, while the authoritative server still refuses the edited state.
+- Added all-or-none `voiceGrants[playerId]` validation. Every roster player has
+  one distinct UID/token/refresh capability; all use one App ID/channel and
+  `refreshOwner: "matchmaker"`. Core passes these through and does not own the
+  external refresh. M4 fallback remains `refreshOwner: "bridge"` and rotates
+  its local capability per reconnect.
+- The exported M6 gate explicitly deleted App ID, App Certificate, and local
+  token URL. External grants still reached two distinct players and provider
+  failure did not break gameplay or fresh-token reconnect.
+
+### Local evidence
+
+- TypeScript, 16 Jest suites/66 tests, full minified build, generated extension
+  import/export, M6 bundle validation, and the real two-client M6 integration
+  passed.
+- M3, M4, and M5 exported-runtime regressions passed. The M4 local-mint path
+  retained refresh/capability rotation; M5 retained independent authority
+  selection and pre-GDevelop rejection.
+- Two deterministic M6 exports matched build ID
+  `sha256:0168bc1adfe55b5b12b7054558d91ced0d3a1ff3f5b1f9383ac80bbee55e553a`.
+- Detailed contract/evidence: `docs/project/M6-CROSS-SERVICE-HOOKS.md`.
+- Ubuntu 24.04/Xvfb passed with the exact content-addressed M6 artifact:
+  blocked-roster preflight happened before GDevelop, Duel admission loaded a
+  Player Profile document, external voice worked without local Agora
+  credentials, signed lifecycle events drained, and the process exited 0.
+- An initial remote run placed its test harness inside the artifact and was
+  correctly rejected by integrity validation. The harness was moved outside
+  the bundle and the exact artifact restored before the passing run.

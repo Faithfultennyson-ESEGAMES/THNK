@@ -294,6 +294,10 @@ const writeBundleFiles = (bundlePath, project, catalog, compatibility) => {
       `THNK_CONTROL_TOKEN=\n` +
       `THNK_WEBHOOK_SECRET=\n` +
       `THNK_ALLOW_INSECURE_CALLBACKS=false\n` +
+      `THNK_PLAYER_PROFILE_URL=\n` +
+      `THNK_PLAYER_PROFILE_TOKEN=\n` +
+      `THNK_PLAYER_PROFILE_TIMEOUT_MS=3000\n` +
+      `THNK_ALLOW_INSECURE_PLAYER_PROFILE_URL=false\n` +
       `THNK_VOICE_ENABLED=false\n` +
       `AGORA_APP_ID=\n` +
       `AGORA_APP_CERTIFICATE=\n` +
@@ -324,8 +328,10 @@ const writeBundleFiles = (bundlePath, project, catalog, compatibility) => {
       `The v1 control API defaults to \`127.0.0.1:${getDefaultControlPort(
         catalog.port
       )}\`. Bind its control routes only to a private or otherwise protected interface. Player admission JWTs are sent to Geckos in the HTTP \`Authorization\` header, never in a URL. Plain HTTP callback URLs are accepted only for loopback development when \`THNK_ALLOW_INSECURE_CALLBACKS=true\`.\n\n` +
+      "## Player Profile hooks\n\n" +
+      "Set `THNK_PLAYER_PROFILE_URL` and the independent service credential `THNK_PLAYER_PROFILE_TOKEN` together to enable blocked-player preflight and persistent player documents. The URL must use HTTPS outside explicitly enabled loopback development. The Bridge never accepts this URL or credential from a session request.\n\n" +
       "## Agora session voice\n\n" +
-      "Voice is opt-in. Set `THNK_VOICE_ENABLED=true`, inject `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` as server secrets, and set the public HTTPS `THNK_VOICE_TOKEN_URL` to the externally routed `/v1/voice/token` endpoint. Expose only that route to game clients; keep the other control routes private. The App Certificate must never be placed in a client export, URL, log, or source file. Loopback HTTP is available only for development with `THNK_ALLOW_INSECURE_VOICE_TOKEN_URL=true`.\n"
+      "Voice is opt-in. For standalone local minting, set `THNK_VOICE_ENABLED=true`, inject `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` as server secrets, and set the public HTTPS `THNK_VOICE_TOKEN_URL` to the externally routed `/v1/voice/token` endpoint. A matchmaker may instead supply one validated, matchmaker-refreshed grant per roster member without any bundle-local Agora credentials. Expose only the voice token route to game clients; keep control routes private. The App Certificate must never be placed in a client export, URL, log, or source file. Loopback HTTP is available only for development with `THNK_ALLOW_INSECURE_VOICE_TOKEN_URL=true`.\n"
   );
 };
 
@@ -449,6 +455,12 @@ const exportServer = ({
         enabledByEnvironment: "THNK_VOICE_ENABLED",
         credentials: ["AGORA_APP_ID", "AGORA_APP_CERTIFICATE"],
       },
+      playerProfile: {
+        documentApi: "/internal/players/:id/document?gameId=",
+        blockedApi: "/internal/players/:id/blocked",
+        enabledByEnvironment: "THNK_PLAYER_PROFILE_URL",
+        credentialEnvironment: "THNK_PLAYER_PROFILE_TOKEN",
+      },
       contentHash: { algorithm: "sha256", value: "" },
     };
     fs.writeFileSync(
@@ -537,6 +549,7 @@ const validateBundle = (bundlePath) => {
     "runtime/bundle-identity.cjs",
     "runtime/geckos-bridge.cjs",
     "runtime/jwt-verifier.cjs",
+    "runtime/player-profile-client.cjs",
     "runtime/session-manager.cjs",
     "runtime/voice-token-manager.cjs",
     "runtime/webhook-outbox.cjs",
@@ -570,6 +583,16 @@ const validateBundle = (bundlePath) => {
     packageData.dependencies["agora-token"] !== AGORA_TOKEN_VERSION
   )
     throw new Error("Bundle contains an invalid Agora voice configuration.");
+  if (
+    manifest.playerProfile?.documentApi !==
+      "/internal/players/:id/document?gameId=" ||
+    manifest.playerProfile?.blockedApi !== "/internal/players/:id/blocked" ||
+    manifest.playerProfile?.enabledByEnvironment !==
+      "THNK_PLAYER_PROFILE_URL" ||
+    manifest.playerProfile?.credentialEnvironment !==
+      "THNK_PLAYER_PROFILE_TOKEN"
+  )
+    throw new Error("Bundle contains an invalid Player Profile contract.");
   if (
     manifest.runtime.nodeVersion !== NODE_VERSION_RANGE ||
     packageData.engines?.node !== manifest.runtime.nodeVersion

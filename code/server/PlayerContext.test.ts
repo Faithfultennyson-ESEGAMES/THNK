@@ -1,10 +1,16 @@
+import "tests-utils/gdjs-mock";
 import {
   getCurrentPlayerTag,
+  getCurrentPlayerVariableNumber,
+  getCurrentPlayerVariableJSON,
+  getPlayerDocument,
   markObjectAsOwned,
   pickOwnedObjects,
   releasePlayerContext,
   resetPlayerContexts,
   setPlayerTags,
+  setPlayerDocument,
+  setCurrentPlayerVariable,
   switchPlayerContext,
 } from "server/PlayerContext";
 
@@ -70,4 +76,29 @@ test("releases a disconnected user's owned-object context", () => {
   releasePlayerContext("user-a");
   expect(pickOwnedObjects(objectLists)).toBe(false);
   expect(picked).toEqual([]);
+});
+
+test("reads and writes only the selected player's persistent document", () => {
+  const writes: unknown[] = [];
+  setPlayerDocument(
+    "user-a",
+    { progression: { xp: 7 }, inventory: ["sword"] },
+    (document) => writes.push(document)
+  );
+  setPlayerDocument("user-b", { progression: { xp: 2 } });
+  switchPlayerContext("user-a");
+  expect(getCurrentPlayerVariableNumber("progression.xp")).toBe(7);
+  expect(getCurrentPlayerVariableJSON("inventory")).toBe('["sword"]');
+
+  const value = new gdjs.Variable();
+  value.setNumber(8);
+  expect(setCurrentPlayerVariable("progression.xp", value)).toBe(true);
+  expect(getPlayerDocument("user-a")).toEqual({
+    progression: { xp: 8 },
+    inventory: ["sword"],
+  });
+  expect(writes).toEqual([getPlayerDocument("user-a")]);
+
+  switchPlayerContext("user-b");
+  expect(getCurrentPlayerVariableNumber("progression.xp")).toBe(2);
 });

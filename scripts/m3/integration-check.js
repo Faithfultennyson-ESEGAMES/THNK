@@ -10,8 +10,10 @@ const { evaluate, sendCommand } = require("../m1/inspect-runtime");
 const repositoryRoot = path.resolve(__dirname, "../..");
 const m4Check = process.env.THNK_M4_CHECK === "true";
 const m5Check = process.env.THNK_M5_CHECK === "true";
+const m6Check = process.env.THNK_M6_CHECK === "true";
 const liveAgora = process.env.THNK_M4_LIVE === "true";
-const milestone = m5Check ? "M5" : m4Check ? "M4" : "M3";
+const milestone = m6Check ? "M6" : m5Check ? "M5" : m4Check ? "M4" : "M3";
+const voiceCheck = m4Check || m6Check;
 const bundlePath = path.resolve(
   process.env.THNK_TEST_BUNDLE ||
     path.join(repositoryRoot, ".generated/m2/server-bundle")
@@ -22,7 +24,9 @@ const clientBuild = path.resolve(
 );
 const generatedRoot = path.join(
   repositoryRoot,
-  m5Check
+  m6Check
+    ? ".generated/m6"
+    : m5Check
     ? ".generated/m5/integration-clients"
     : m4Check
     ? ".generated/m4"
@@ -36,10 +40,19 @@ const webhookSecret = "m3-webhook-secret-for-local-integration-only";
 const controlUrl = "http://127.0.0.1:9209";
 const gameUrl = "http://127.0.0.1:9208/.wrtc/v2/connections";
 const callbackPort = 9210;
+const profilePort = 9212;
 const clientPort = 8080;
 const clients = new Map();
 const receivedAttempts = [];
 const logicalEvents = new Map();
+const profileDocuments = new Map([
+  ["alice", { progression: { xp: 7 } }],
+  ["bob", { progression: { xp: 7 } }],
+  ["probe", { progression: { xp: 7 } }],
+]);
+const profileLoads = new Map();
+const profileWrites = [];
+const profileToken = "m6-player-profile-service-token-only";
 const agoraAppId = process.env.AGORA_APP_ID || "a".repeat(32);
 const agoraAppCertificate = process.env.AGORA_APP_CERTIFICATE || "b".repeat(32);
 let retryInjected = false;
@@ -167,6 +180,37 @@ const callbackServer = http.createServer(async (request, response) => {
   } else response.writeHead(204).end();
 });
 
+const profileServer = http.createServer(async (request, response) => {
+  if (request.headers.authorization !== `Bearer ${profileToken}`)
+    return response.writeHead(401).end();
+  const url = new URL(request.url, `http://127.0.0.1:${profilePort}`);
+  const match = /^\/internal\/players\/([^/]+)\/(blocked|document)$/.exec(
+    url.pathname
+  );
+  if (!match) return response.writeHead(404).end();
+  const playerId = decodeURIComponent(match[1]);
+  if (match[2] === "blocked" && request.method === "GET") {
+    response.writeHead(200, { "content-type": "application/json" });
+    return response.end(
+      JSON.stringify({ blocked: playerId === "blocked-player" })
+    );
+  }
+  if (match[2] === "document" && request.method === "GET") {
+    profileLoads.set(playerId, (profileLoads.get(playerId) || 0) + 1);
+    response.writeHead(200, { "content-type": "application/json" });
+    return response.end(
+      JSON.stringify({ document: profileDocuments.get(playerId) || {} })
+    );
+  }
+  if (match[2] === "document" && request.method === "PUT") {
+    const body = JSON.parse((await readBody(request)).toString("utf8"));
+    profileDocuments.set(playerId, structuredClone(body.document));
+    profileWrites.push({ playerId, ...body });
+    return response.writeHead(204).end();
+  }
+  response.writeHead(405).end();
+});
+
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -250,6 +294,7 @@ const snapshot = (debugPort) =>
         connection: window.THNK?.client?.getConnectionState?.(),
         score: scene?.getVariables().get("State").getChild("Score").getAsNumber(),
         lastTeam: scene?.getVariables().get("State").getChild("LastTeam").getAsString(),
+        lastProfileXP: scene?.getVariables().get("State").getChild("LastProfileXP").getAsNumber(),
         players: (scene?.getObjects("Player") || []).map(player => ({
           id: player.thnkID,
           x: player.getX()
@@ -372,6 +417,18 @@ if (m4Check)
     THNK_VOICE_TOKEN_URL: `${controlUrl}/v1/voice/token`,
     THNK_ALLOW_INSECURE_VOICE_TOKEN_URL: "true",
   });
+if (m6Check)
+  Object.assign(serverEnvironment, {
+    THNK_VOICE_ENABLED: "true",
+    THNK_PLAYER_PROFILE_URL: `http://127.0.0.1:${profilePort}/`,
+    THNK_PLAYER_PROFILE_TOKEN: profileToken,
+    THNK_ALLOW_INSECURE_PLAYER_PROFILE_URL: "true",
+  });
+if (m6Check) {
+  delete serverEnvironment.AGORA_APP_ID;
+  delete serverEnvironment.AGORA_APP_CERTIFICATE;
+  delete serverEnvironment.THNK_VOICE_TOKEN_URL;
+}
 const electronPath = require("electron");
 const gameServer = spawn(electronPath, [bundlePath], {
   cwd: bundlePath,
@@ -388,9 +445,11 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
   fs.mkdirSync(generatedRoot, { recursive: true });
   callbackServer.listen(callbackPort, "127.0.0.1");
   clientServer.listen(clientPort, "127.0.0.1");
+  if (m6Check) profileServer.listen(profilePort, "127.0.0.1");
   await Promise.all([
     once(callbackServer, "listening"),
     once(clientServer, "listening"),
+    ...(m6Check ? [once(profileServer, "listening")] : []),
   ]);
 
   await waitFor(
@@ -398,26 +457,68 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
     (response) => response.ok,
     `${milestone} control API`
   );
+  const baseSessionInput = {
+    sessionId: "m3-session",
+    ...assignmentIdentity,
+    players: ["alice", "bob", "probe"].map((playerId) => ({
+      playerId,
+      tags: signedTags,
+    })),
+    callbackUrl: `http://127.0.0.1:${callbackPort}/events`,
+    reconnectPolicy: "fresh-token",
+    metadata: { fixture: milestone.toLowerCase() },
+    tokenVerification: {
+      publicKey,
+      keyId: "m3-key",
+      issuer: "m3-stub-matchmaker",
+      audience: "m3-fixture-server",
+      algorithm: "RS256",
+    },
+    ...(m6Check
+      ? {
+          voiceGrants: Object.fromEntries(
+            ["alice", "bob", "probe"].map((playerId) => [
+              playerId,
+              {
+                appId: "a".repeat(32),
+                channel: "m6-external-session",
+                uid: `m6-${playerId}`,
+                token: `m6-${playerId}-${"t".repeat(32)}`,
+                expiresAt: new Date(Date.now() + 240_000).toISOString(),
+                refreshUrl: `https://voice.invalid/${playerId}/refresh`,
+                refreshCapability: crypto
+                  .createHash("sha256")
+                  .update(`m6-${playerId}`)
+                  .digest("base64url"),
+                refreshOwner: "matchmaker",
+              },
+            ])
+          ),
+        }
+      : {}),
+  };
+  if (m6Check) {
+    const blocked = await controlRequest("/v1/session", {
+      method: "POST",
+      body: {
+        ...baseSessionInput,
+        players: [{ playerId: "blocked-player", tags: signedTags }],
+        voiceGrants: {
+          "blocked-player": {
+            ...baseSessionInput.voiceGrants.alice,
+            uid: "m6-blocked-player",
+          },
+        },
+      },
+    });
+    assert.strictEqual(blocked.status, 403);
+    assert.strictEqual(blocked.body.error, "player_blocked");
+    assert.ok(!serverOutput.includes("THNK_SERVER_READY"));
+    assert.ok(!serverOutput.includes("THNK_AUTHORITY_SCENE_STARTED"));
+  }
   const session = await controlRequest("/v1/session", {
     method: "POST",
-    body: {
-      sessionId: "m3-session",
-      ...assignmentIdentity,
-      players: ["alice", "bob", "probe"].map((playerId) => ({
-        playerId,
-        tags: signedTags,
-      })),
-      callbackUrl: `http://127.0.0.1:${callbackPort}/events`,
-      reconnectPolicy: "fresh-token",
-      metadata: { fixture: "m3" },
-      tokenVerification: {
-        publicKey,
-        keyId: "m3-key",
-        issuer: "m3-stub-matchmaker",
-        audience: "m3-fixture-server",
-        algorithm: "RS256",
-      },
-    },
+    body: baseSessionInput,
   });
   assert.strictEqual(session.status, 201);
   await waitFor(
@@ -474,6 +575,7 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
           value.score === 2 &&
           value.players.length === 2 &&
           (!m5Check || value.lastTeam === "signed-team") &&
+          (!m6Check || value.lastProfileXP === 8) &&
           value.admissionTokenCleared
       ),
     "two admitted clients to converge"
@@ -483,7 +585,7 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
     gameplaySnapshot(joined[1])
   );
   let initialBobVoice;
-  if (m4Check) {
+  if (voiceCheck) {
     const voiceReady = await waitFor(
       () => Promise.all([snapshot(9422), snapshot(9423)]),
       (values) => values.every((value) => value.voice.channel),
@@ -502,10 +604,11 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
       !directoryContains(clientBuild, agoraAppCertificate),
       "The Agora App Certificate appeared in the client export."
     );
-    await delay(5_100);
-    const refresh = await evaluate(
-      9422,
-      `(async () => {
+    if (m4Check) {
+      await delay(5_100);
+      const refresh = await evaluate(
+        9422,
+        `(async () => {
         const grant = window.THNK.voice.grant;
         const response = await fetch(grant.refreshUrl, {
           method: "POST",
@@ -522,14 +625,15 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
           )})
         };
       })()`
-    );
-    assert.deepStrictEqual(refresh, {
-      status: 200,
-      channelMatches: true,
-      uidMatches: true,
-      hasToken: true,
-      hasCertificate: false,
-    });
+      );
+      assert.deepStrictEqual(refresh, {
+        status: 200,
+        channelMatches: true,
+        uidMatches: true,
+        hasToken: true,
+        hasCertificate: false,
+      });
+    }
     initialBobVoice = voiceReady[1].voice;
     if (liveAgora) {
       await waitFor(
@@ -613,6 +717,21 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
       ).length === 1,
     "canonical player ownership and authoritative movement"
   );
+  if (m6Check) {
+    await setKey(9422, true, 32);
+    await delay(250);
+    await setKey(9422, false, 32);
+    await waitFor(
+      () =>
+        Promise.resolve(
+          [...logicalEvents.values()].filter(
+            (event) => event.eventType === "trust.violation"
+          )
+        ),
+      (events) => events.length === 1,
+      "one signed trust violation webhook"
+    );
+  }
 
   await closeClient(9423);
   const rejoined = await waitFor(
@@ -638,7 +757,7 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
       ),
     "fresh-token reconnect without identity mixing"
   );
-  if (m4Check) {
+  if (voiceCheck) {
     const rejoinedVoice = await waitFor(
       () => snapshot(9423),
       (value) => Boolean(value.voice.channel),
@@ -646,10 +765,16 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
     );
     assert.strictEqual(rejoinedVoice.voice.channel, initialBobVoice.channel);
     assert.strictEqual(rejoinedVoice.voice.uid, initialBobVoice.uid);
-    assert.notStrictEqual(
-      rejoinedVoice.voice.refreshCapabilityFingerprint,
-      initialBobVoice.refreshCapabilityFingerprint
-    );
+    if (m4Check)
+      assert.notStrictEqual(
+        rejoinedVoice.voice.refreshCapabilityFingerprint,
+        initialBobVoice.refreshCapabilityFingerprint
+      );
+    else
+      assert.strictEqual(
+        rejoinedVoice.voice.refreshCapabilityFingerprint,
+        initialBobVoice.refreshCapabilityFingerprint
+      );
     assert.ok(
       ["JOINING", "CONNECTED", "CONNECTED_LISTEN_ONLY", "FAILED"].includes(
         rejoinedVoice.voice.state
@@ -700,6 +825,18 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
     receivedAttempts.length > logicalEvents.size,
     "The injected callback outage did not produce an at-least-once retry."
   );
+  if (m6Check) {
+    assert.strictEqual(
+      [...logicalEvents.values()].filter(
+        (event) => event.eventType === "trust.violation"
+      ).length,
+      1
+    );
+    assert.ok(profileWrites.length >= 2);
+    assert.strictEqual(profileDocuments.get("alice").progression.xp, 8);
+    assert.strictEqual(profileDocuments.get("bob").progression.xp, 8);
+    assert.ok((profileLoads.get("bob") || 0) >= 2);
+  }
   assert.ok(retryInjected);
   assert.ok(
     !serverOutput.includes(agoraAppCertificate),
@@ -721,13 +858,14 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
         webhookAttempts: receivedAttempts.length,
         logicalEvents: logicalEvents.size,
         serverExitCode: exitCode,
-        ...(m4Check
+        ...(voiceCheck
           ? {
               voiceChannelShared: true,
               voiceUsersDistinct: true,
-              voiceRefreshPassed: true,
+              voiceRefreshPassed: m4Check,
+              externalVoiceGrantDeliveredWithoutLocalCredentials: m6Check,
               reconnectVoiceUidStable: true,
-              reconnectCapabilityRotated: true,
+              reconnectCapabilityRotated: m4Check,
               agoraOutageGameplayUnaffected: true,
               ...(liveAgora
                 ? {
@@ -755,4 +893,5 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
     if (!gameServer.killed) gameServer.kill();
     callbackServer.close();
     clientServer.close();
+    profileServer.close();
   });
