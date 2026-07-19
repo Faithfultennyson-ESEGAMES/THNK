@@ -371,3 +371,13 @@ project-wide timeline and must be updated as part of every milestone commit.
   `agora-token` nor `agora-rtc-sdk-ng` introduced a high advisory. M5 must
   upgrade/test the runtime chain or record formal mitigations before a release
   candidate.
+
+### M4 completion record
+
+- M4 implementation was committed on branch `platform/m4-agora-voice` as
+  `e76d5f458876402b07e1180361365a688b81a8fd` (`feat: add secure Agora session
+  voice`).
+- The user-owned `.vscode/settings.json` change was deliberately excluded from
+  the M4 commit.
+- Before commit, 849 tracked and untracked repository files were scanned for
+  the external Agora App Certificate; zero matches were found.
