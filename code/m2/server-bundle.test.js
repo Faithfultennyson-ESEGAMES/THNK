@@ -115,9 +115,10 @@ test("validates the bundle hash and detects tampering", () => {
     path.join(bundle, "package.json"),
     `${JSON.stringify({
       main: "runtime/main.cjs",
+      engines: { node: "18.20.x" },
       dependencies: {
         "@electron/remote": "2.1.2",
-        "@geckos.io/server": "^2.2.3",
+        "@geckos.io/server": "3.1.0",
         electron: "32.3.3",
       },
     })}\n`
@@ -132,6 +133,7 @@ test("validates the bundle hash and detects tampering", () => {
       serverDirectory: "server",
       port: 9208,
       electronVersion: "32.3.3",
+      nodeVersion: "18.20.x",
     },
     contentHash: { algorithm: "sha256", value: "" },
   };

@@ -10,15 +10,16 @@
 
 M2 exports a GDevelop JSON project into a validated, self-contained THNK server
 directory. The artifact runs the authoritative game in a hidden Electron
-window, without the GDevelop editor or THNK source tree. A local Windows run
-installed only the generated bundle's dependencies, reached
-`THNK_SERVER_READY port=9208`, and passed an eight-client disconnect/reconnect
-test.
+window, without the GDevelop editor or THNK source tree. Local Windows and
+remote Ubuntu 24.04 runs installed only the generated bundle's dependencies,
+reached `THNK_SERVER_READY port=9208`, and passed disconnect/reconnect tests
+with 8 and 16 isolated browser clients.
 
 The runtime is windowless to an operator but is not rendererless: current
-GDevelop game code needs its DOM/renderer, and the inherited Geckos adapter
-needs Node/Electron. Linux and container deployment therefore still need a
-virtual-display/package test before M2 is declared cross-platform.
+GDevelop game code needs its DOM/renderer, and the Geckos adapter needs
+Node/Electron. Linux therefore runs Electron inside Xvfb. Container image
+publication is deferred to M5, but the underlying packaged Linux/Xvfb runtime
+is now verified.
 
 ## CLI contract
 
@@ -55,11 +56,11 @@ ports, unsupported formats/transports, and any content hash mismatch.
 
 GDevelop emits random memory-address-like suffixes for generated inline
 functions. The exporter replaces only these `userFunc0x...` identifiers using
-their first-appearance order. Two independent fixture exports with the same
-`SOURCE_DATE_EPOCH` produced the identical content hash:
+their first-appearance order. Two independent final fixture exports produced
+the identical content hash:
 
 ```text
-7abe5dc50a036d08772c3c8f66b8776bddaa3eeaaa6ef44537627da57461fc87
+39e37e9b81a3e1c2e417b56ad83d591c15bff6702fb41589d40651ff9b0beb7d
 ```
 
 `manifest.json` is intentionally outside the content hash so its documented
@@ -84,37 +85,61 @@ without touching other users; player-owned object lists remain available for
 the GDevelop disconnect event and are released immediately afterward; closing
 the server clears every player queue and ownership context.
 
+The transport is pinned to Geckos 3.1.0 and its modern node-datachannel stack.
+THNK uses a fully reliable, ordered data channel because its compact state diffs
+depend on create, update, and delete order. Client object registration is also
+idempotent: a replayed create for an already-live numeric ID keeps the existing
+object and removes the duplicate instance.
+
 This prevents users from being mixed up at the transport and live-object
 levels. It does not yet reclaim an account's prior character after reconnect.
 Stable `playerId` authentication, roster membership, and reconnect policy are
 M3 responsibilities and will be bound to short-lived admission tokens.
 
-## Eight-client runtime result
+## Remote runtime results
 
-The automated check launched eight isolated headless Chrome profiles against
-one exported authority process and observed:
+The automated check launched isolated headless Chrome profiles on Windows
+against the exported authority on Ubuntu and observed:
 
-| Check                 | Result                                                                   |
-| --------------------- | ------------------------------------------------------------------------ |
-| Initial join          | Every client converged on score 8 and unique objects 1-8                 |
-| Ownership             | Right-arrow input changed exactly one object on every client             |
-| Selective disconnect  | Four closed clients were removed; four survivors kept their object IDs   |
-| Reconnect             | Four fresh browser profiles joined and all eight clients converged again |
-| Reconnected ownership | Input from a reconnected client still changed exactly one object         |
+| Check                 | Result                                                             |
+| --------------------- | ------------------------------------------------------------------ |
+| Initial join          | Every client converged on the expected score and unique object IDs |
+| Ownership             | Right-arrow input changed exactly one object on every client       |
+| Selective disconnect  | Half the clients closed; every survivor kept its object ID         |
+| Reconnect             | Fresh browser profiles joined and every client converged again     |
+| Reconnected ownership | Input from a reconnected client still changed exactly one object   |
 
-Observed survivor IDs were `1, 2, 5, 6`; after reconnect the live synchronized
-set was again `1-8`. Numeric synchronized-object IDs may be recycled after the
-old object is gone; they are not player/account identities.
+The complete lifecycle passed first with 8 clients and then with 16 clients. In
+the 16-client run, all clients converged on objects `1-16`; eight survivors kept
+their IDs through the disconnect phase, and all 16 clients converged again
+after reconnect. Numeric synchronized-object IDs may be recycled only after the
+old object is deleted; reliable ordering prevents an old and new object from
+crossing. These numeric IDs are not player/account identities.
+
+## Ubuntu package/runtime result
+
+The clean-machine test used Ubuntu 24.04.4 LTS, x86_64, 2 CPU cores, and 3.7 GiB
+RAM. The host installed Xvfb plus Electron's GTK/NSS/ALSA/GBM/X11 runtime
+libraries. The bundle used the repository-supported Node 18.20.8 toolchain; its
+official archive checksum was verified before extraction. Electron's bundled
+`chrome-sandbox` was installed as `root:root` mode `4755`, so the server did not
+need the unsafe `--no-sandbox` flag.
+
+The artifact archive checksum matched before extraction, the frozen production
+install passed, the native WebRTC module loaded without missing shared
+libraries, Windows reached port 9208 over the LAN, and the final 8/16-client
+lifecycle checks passed against that deployed artifact.
 
 ## Verification
 
-- Jest: 10 suites, 22 tests passed.
+- Jest: 10 suites, 23 tests passed.
 - GDevelop fixture compilation: zero skipped/unknown instructions.
 - Independent repeat exports: identical SHA-256 content hash.
 - Bundle validation: passed before launch.
 - Bundle-local frozen production install: passed.
-- Bundle-local hidden Electron launch: ready on port 9208.
-- Eight-client join/move/disconnect/reconnect check: passed.
+- Bundle-local hidden Electron launch: ready on port 9208 on Windows and Ubuntu.
+- Remote 8-client join/move/disconnect/reconnect check: passed.
+- Remote 16-client join/move/disconnect/reconnect check: passed in 100 seconds.
 
 The repository-wide frozen install, `yarn ts`, `yarn test --runInBand`, and full
 `yarn build` gates passed on Windows after restoring the accidentally omitted
@@ -123,8 +148,8 @@ without embedding a machine-specific source path.
 
 ## Capacity boundary
 
-Eight simultaneous clients are a correctness proof, not a production capacity
-claim. THNK replication cost grows with connected users, synchronized objects,
-message rate, and tick rate. M5 must add repeatable load profiles, CPU/memory and
-network measurements, latency percentiles, soak duration, and explicit server
-limits before a supported maximum player count is advertised.
+Sixteen simultaneous clients are a correctness/stress proof, not a production
+capacity claim. THNK replication cost grows with connected users, synchronized
+objects, message rate, and tick rate. M5 must add repeatable load profiles,
+CPU/memory and network measurements, latency percentiles, soak duration, and
+explicit server limits before a supported maximum player count is advertised.

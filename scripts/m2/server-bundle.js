@@ -6,7 +6,8 @@ const path = require("path");
 const FORMAT_VERSION = 1;
 const ELECTRON_VERSION = "32.3.3";
 const ELECTRON_REMOTE_VERSION = "2.1.2";
-const GECKOS_VERSION = "^2.2.3";
+const GECKOS_VERSION = "3.1.0";
+const NODE_VERSION_RANGE = "18.20.x";
 const repositoryRoot = path.resolve(__dirname, "../..");
 const runtimeTemplate = path.join(__dirname, "runtime");
 const extensionPaths = [
@@ -189,7 +190,7 @@ const writeBundleFiles = (bundlePath, project, entry) => {
     private: true,
     version: project.properties?.version || "1.0.0",
     main: "runtime/main.cjs",
-    engines: { node: ">=18" },
+    engines: { node: NODE_VERSION_RANGE },
     scripts: { start: "electron ." },
     dependencies: {
       "@electron/remote": ELECTRON_REMOTE_VERSION,
@@ -213,7 +214,10 @@ const writeBundleFiles = (bundlePath, project, entry) => {
     path.join(bundlePath, "README.md"),
     `# ${project.properties?.name || "GDevelop"} THNK server\n\n` +
       `Generated server entry: \`${entry.bootstrapScene}\` -> \`${entry.gameScene}\`.\n\n` +
+      `Use Node ${NODE_VERSION_RANGE} and Yarn 1.22.x.\n\n` +
       "```text\ncorepack yarn install --frozen-lockfile --production=true\nyarn start\n```\n\n" +
+      "On a displayless Ubuntu 24.04 host, install Electron's runtime libraries and Xvfb, configure Electron's sandbox, then launch inside the virtual display:\n\n" +
+      "```text\nsudo apt-get update\nsudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libx11-xcb1 libdrm2 libxkbcommon0 libatk-bridge2.0-0 libcups2 libatspi2.0-0 fonts-liberation\nsudo chown root:root node_modules/electron/dist/chrome-sandbox\nsudo chmod 4755 node_modules/electron/dist/chrome-sandbox\nxvfb-run -a --server-args='-screen 0 1024x768x24' yarn start\n```\n\n" +
       `The authoritative Geckos server listens on port ${entry.port}. ` +
       "The Electron window is created hidden; stop with SIGINT or SIGTERM.\n"
   );
@@ -300,6 +304,7 @@ const exportServer = ({ projectPath, outputPath }) => {
         serverDirectory: "server",
         port: entry.port,
         electronVersion: ELECTRON_VERSION,
+        nodeVersion: NODE_VERSION_RANGE,
       },
       contentHash: { algorithm: "sha256", value: "" },
     };
@@ -373,6 +378,13 @@ const validateBundle = (bundlePath) => {
   if (packageData.dependencies.electron !== manifest.runtime.electronVersion)
     throw new Error(
       "Bundle Electron dependency does not match its manifest version."
+    );
+  if (
+    manifest.runtime.nodeVersion !== NODE_VERSION_RANGE ||
+    packageData.engines?.node !== manifest.runtime.nodeVersion
+  )
+    throw new Error(
+      `Bundle requires the supported Node runtime ${NODE_VERSION_RANGE}.`
     );
   const actualHash = hashBundleContent(root);
   if (actualHash !== manifest.contentHash?.value)

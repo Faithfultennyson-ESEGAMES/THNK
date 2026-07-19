@@ -40,10 +40,12 @@ export const applySceneUpdateToScene = (
       i < len;
       createdObject = sceneUpdate.createdObjects(++i)!
     ) {
+      const id = createdObject.id();
+      if (objectsRegistery.getObject(id)) continue;
       const name = createdObject.name();
       if (!name) continue;
       const obj = runtimeScene.createObject(name)!;
-      objectsRegistery.registerObject(createdObject.id(), obj);
+      objectsRegistery.registerObject(id, obj);
     }
 
   if (sceneUpdate.objectsLength() !== 0)

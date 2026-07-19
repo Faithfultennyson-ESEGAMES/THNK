@@ -35,18 +35,18 @@ The matchmaker owns grouping and player identity. The bridge owns admission and 
 
 These choices close the blueprint's open questions for the first implementation:
 
-| Topic | v1 decision | Reason |
-|---|---|---|
-| THNK baseline | Start from upstream `master`, then inspect selected `v2` changes; do not build from `v2` wholesale | `master` is the latest concrete implementation; `v2` describes itself as WIP explorations |
-| Session isolation | One operating-system process/container per game session | Matches THNK's current single-world assumptions and makes crashes, memory, logs, and cleanup session-scoped |
-| Matchmaker callbacks | Signed HTTPS webhooks with event IDs, timestamps, retry, and idempotency | Simpler to deploy and test than a persistent control connection |
-| Admission tokens | Short-lived asymmetric JWTs; matchmaker keeps the private key and the bridge receives only a public key | Avoids giving every runtime authority to mint player tokens |
-| Agora secrets | `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` are server environment variables/secrets | The certificate must never be present in a GDevelop client export |
-| THNK Rooms/Relay | Not a v1 dependency | Its documented status and production readiness are uncertain |
-| Transport | Geckos.io remains the initial data transport | It is the existing dedicated-server-shaped adapter and gives the shortest path to a proof |
-| General THNK auth | Bridge sessions only in v1 | Direct P2P/local behavior remains compatible; broader adapter auth can be designed after the bridge works |
-| GDevelop editor UI | No `newIDE` fork in v1 | The supported surface is the CLI plus generated GDevelop extensions |
-| Voice coupling | Voice is side-band; no audio crosses the THNK state protocol | Prevents voice concerns from destabilizing authoritative state sync |
+| Topic                | v1 decision                                                                                             | Reason                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| THNK baseline        | Start from upstream `master`, then inspect selected `v2` changes; do not build from `v2` wholesale      | `master` is the latest concrete implementation; `v2` describes itself as WIP explorations                   |
+| Session isolation    | One operating-system process/container per game session                                                 | Matches THNK's current single-world assumptions and makes crashes, memory, logs, and cleanup session-scoped |
+| Matchmaker callbacks | Signed HTTPS webhooks with event IDs, timestamps, retry, and idempotency                                | Simpler to deploy and test than a persistent control connection                                             |
+| Admission tokens     | Short-lived asymmetric JWTs; matchmaker keeps the private key and the bridge receives only a public key | Avoids giving every runtime authority to mint player tokens                                                 |
+| Agora secrets        | `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` are server environment variables/secrets                     | The certificate must never be present in a GDevelop client export                                           |
+| THNK Rooms/Relay     | Not a v1 dependency                                                                                     | Its documented status and production readiness are uncertain                                                |
+| Transport            | Geckos.io remains the initial data transport                                                            | It is the existing dedicated-server-shaped adapter and gives the shortest path to a proof                   |
+| General THNK auth    | Bridge sessions only in v1                                                                              | Direct P2P/local behavior remains compatible; broader adapter auth can be designed after the bridge works   |
+| GDevelop editor UI   | No `newIDE` fork in v1                                                                                  | The supported surface is the CLI plus generated GDevelop extensions                                         |
+| Voice coupling       | Voice is side-band; no audio crosses the THNK state protocol                                            | Prevents voice concerns from destabilizing authoritative state sync                                         |
 
 ## 3. Gates before feature work
 
@@ -94,11 +94,11 @@ Feature work begins only after we can:
 
 ### M1 — Remote authoritative vertical slice
 
-**Implementation status (2026-07-18):** The local separate-process vertical
-slice is complete on `platform/m1-remote-authority`; fixture, runtime check,
-lifecycle regressions, and results are recorded in
-`docs/project/M1-REMOTE-AUTHORITY.md`. A second-machine or isolated-network run
-remains before the remote-environment gate is closed.
+**Implementation status (2026-07-19):** Complete. The separate-process vertical
+slice was first proven locally on `platform/m1-remote-authority`, then the
+exported authority was run on an Ubuntu host and exercised by Windows browser
+clients over the LAN. Fixture, runtime checks, lifecycle regressions, and
+results are recorded in `docs/project/M1-REMOTE-AUTHORITY.md`.
 
 **Work**
 
@@ -117,12 +117,12 @@ remains before the remote-environment gate is closed.
 
 ### M2 — Server export CLI
 
-**Implementation status (2026-07-19):** The Windows-local exporter, validator,
-hidden Electron runner, deterministic content hash, bundle-local dependency
-install, and eight-client identity/disconnect/reconnect proof are complete on
-`platform/m2-server-export`. See `docs/project/M2-SERVER-EXPORT.md`. A packaged
-Linux/container run with its display dependency remains before the
-cross-platform M2 gate is closed.
+**Implementation status (2026-07-19):** Complete on
+`platform/m2-server-export`. The exporter, validator, hidden Electron runner,
+deterministic content hash, and bundle-local dependency install pass on
+Windows. The packaged artifact also runs on Ubuntu 24.04 with Xvfb and passed
+remote 8-client and 16-client identity/disconnect/reconnect proofs. See
+`docs/project/M2-SERVER-EXPORT.md`.
 
 Command surface:
 
@@ -247,12 +247,12 @@ Automatic voice join happens only after game admission succeeds. Failure to join
 
 Testing is layered so protocol and security failures are caught before full GDevelop tests:
 
-| Layer | Coverage |
-|---|---|
-| Unit | token claims, roster rules, state transitions, webhook signatures/retries, channel/UID derivation, config validation |
-| Contract | matchmaker control API, webhook schema, bundle manifest, error codes, compatibility versions |
-| Integration | Geckos connect/disconnect/reconnect, server process lifecycle, exported artifact boot, Agora token generation |
-| End-to-end | stub matchmaker + exported fixture + two clients + authoritative movement/state + voice |
+| Layer       | Coverage                                                                                                                                |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit        | token claims, roster rules, state transitions, webhook signatures/retries, channel/UID derivation, config validation                    |
+| Contract    | matchmaker control API, webhook schema, bundle manifest, error codes, compatibility versions                                            |
+| Integration | Geckos connect/disconnect/reconnect, server process lifecycle, exported artifact boot, Agora token generation                           |
+| End-to-end  | stub matchmaker + exported fixture + two clients + authoritative movement/state + voice                                                 |
 | Adversarial | expired/wrong-session/replayed tokens, duplicate starts, abrupt disconnects, oversized payloads, callback outage, secret leakage checks |
 
 Every bug found manually in M1–M5 should first gain the smallest useful regression test.

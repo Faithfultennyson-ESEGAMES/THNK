@@ -13,10 +13,11 @@ browser clients as separate processes. Both clients join the same Geckos.io
 session, converge on server-owned movement and state, remove disconnected
 players, reconnect into the current world, and detect server shutdown.
 
-The local vertical slice is complete. The repository includes the fixture,
-generation/export scripts, an automated two-client runtime check, unit
-regressions, and exact manual steps. A second-machine/network-environment pass
-is still required before the plan's remote-environment M1 gate is marked closed.
+The vertical slice is complete. The repository includes the fixture,
+generation/export scripts, automated runtime checks, unit regressions, and
+exact manual steps. The second-machine gate was closed on 2026-07-19 by running
+the exported authority on Ubuntu 24.04 and connecting Windows browser clients
+over the LAN.
 
 ## Validated toolchain
 
@@ -106,13 +107,13 @@ then runs with `yarn fixture:m1:runtime-check`.
 
 ## M1 gate status
 
-| Gate                                                        | State                   |
-| ----------------------------------------------------------- | ----------------------- |
-| Two clients share one non-player-hosted authoritative world | Pass locally            |
-| Client cannot overwrite synchronized position or score      | Pass                    |
-| Join, leave/abrupt disconnect, reconnect, and server stop   | Pass locally            |
-| Fixture, automated check, and manual steps are versioned    | Pass                    |
-| Separate machine or isolated network environment            | Pending operational run |
+| Gate                                                        | State                     |
+| ----------------------------------------------------------- | ------------------------- |
+| Two clients share one non-player-hosted authoritative world | Pass locally and remotely |
+| Client cannot overwrite synchronized position or score      | Pass                      |
+| Join, leave/abrupt disconnect, reconnect, and server stop   | Pass locally and remotely |
+| Fixture, automated check, and manual steps are versioned    | Pass                      |
+| Separate machine or isolated network environment            | Pass on Ubuntu 24.04      |
 
 M2 can start from the locally proven runtime boundary. Its first job is to
 replace the GDevelop desktop server preview with a reproducible headless server

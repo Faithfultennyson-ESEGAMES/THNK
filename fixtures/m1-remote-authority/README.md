@@ -42,9 +42,17 @@ embeds the generated extensions.
 8. Close the server preview. Both clients transition to disconnected and port
    9208 becomes available for an immediate server restart.
 
-For a second-machine check, change the host in the client fixture from
-`127.0.0.1` to the server machine's reachable address, allow port 9208 through
-the development firewall, regenerate the prepared copies, and repeat the test.
+For a second-machine check, set the server machine's reachable host while
+preparing the generated copies, then export the client and repeat the test:
+
+```text
+THNK_FIXTURE_SERVER_HOST=192.168.1.50 yarn fixture:m1:prepare
+yarn fixture:m1:export-client
+```
+
+Allow port 9208 through the development firewall when one is active. The
+tracked fixture remains configured for `127.0.0.1`; the override affects only
+the ignored generated client copy.
 
 For an automated local check, launch two Chrome instances with remote debugging
 ports 9222 and 9223, then run `yarn fixture:m1:runtime-check`. It verifies join,
@@ -69,5 +77,6 @@ yarn thnk server run --bundle .generated/m2/server-bundle
 With the server running, `yarn fixture:m2:multi-client` performs the automated
 eight-client join, ownership, selective-disconnect, and reconnect check. The
 server uses a hidden Electron renderer rather than a visible GDevelop preview.
-See `docs/project/M2-SERVER-EXPORT.md` for guarantees and current platform
-limits.
+Set `THNK_M2_CLIENTS=16` to repeat the same lifecycle proof with 16 isolated
+clients. See `docs/project/M2-SERVER-EXPORT.md` for the validated Ubuntu/Xvfb
+setup, guarantees, and capacity boundary.

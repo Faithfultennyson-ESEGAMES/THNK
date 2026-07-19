@@ -24,15 +24,37 @@ const gdevelopBin =
   "gdevelop";
 
 const sourceProject = JSON.parse(fs.readFileSync(sourceProjectPath, "utf8"));
+const serverHost = process.env.THNK_FIXTURE_SERVER_HOST || "127.0.0.1";
 const gdevelopEnvironment = { ...process.env };
 // VS Code's extension host sets this globally, which would make Electron run
 // GDevelop.exe as a plain Node binary and reject all GDevelop CLI arguments.
 delete gdevelopEnvironment.ELECTRON_RUN_AS_NODE;
 
-const writeVariant = (name, firstLayout) => {
+const setClientServerHost = (project) => {
+  let connectionActions = 0;
+  const visitEvents = (events = []) => {
+    for (const event of events) {
+      for (const action of event.actions || []) {
+        if (action.type?.value !== "THNK_GeckosClient::ConnectToServer")
+          continue;
+        action.parameters[1] = JSON.stringify(serverHost);
+        connectionActions++;
+      }
+      visitEvents(event.events);
+    }
+  };
+  for (const layout of project.layouts || []) visitEvents(layout.events);
+  if (connectionActions !== 1)
+    throw new Error(
+      `Expected exactly one Geckos ConnectToServer action, found ${connectionActions}.`
+    );
+};
+
+const writeVariant = (name, firstLayout, configure = () => {}) => {
   const variantDirectory = path.join(generatedRoot, name);
   const projectPath = path.join(variantDirectory, "game.json");
   const project = structuredClone(sourceProject);
+  configure(project);
   project.firstLayout = firstLayout;
   project.layouts.sort((left, right) => {
     if (left.name === firstLayout) return -1;
@@ -73,7 +95,11 @@ const writeVariant = (name, firstLayout) => {
 };
 
 const serverProject = writeVariant("server", "ServerBootstrap");
-const clientProject = writeVariant("client", "ClientBootstrap");
+const clientProject = writeVariant(
+  "client",
+  "ClientBootstrap",
+  setClientServerHost
+);
 
 console.log(`Prepared server fixture: ${serverProject}`);
 console.log(`Prepared client fixture: ${clientProject}`);

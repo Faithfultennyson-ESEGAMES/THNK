@@ -116,7 +116,11 @@ const launchClient = async (port, generation) => {
     `Chrome client ${port}`
   );
   await waitFor(
-    () => evaluate(port, "typeof gdjs !== 'undefined'"),
+    () =>
+      evaluate(
+        port,
+        "typeof gdjs?.registerRuntimeScenePreEventsCallback === 'function'"
+      ),
     Boolean,
     `GDevelop runtime in client ${port}`
   );

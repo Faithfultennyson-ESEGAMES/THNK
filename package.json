@@ -39,8 +39,8 @@
   },
   "devDependencies": {
     "@electron/remote": "2.1.2",
-    "@geckos.io/client": "^2.2.3",
-    "@geckos.io/server": "^2.2.3",
+    "@geckos.io/client": "3.1.0",
+    "@geckos.io/server": "3.1.0",
     "@types/follow-redirects": "^1.14.1",
     "@types/jest": "^29.0.3",
     "@types/node": "^18.7.18",

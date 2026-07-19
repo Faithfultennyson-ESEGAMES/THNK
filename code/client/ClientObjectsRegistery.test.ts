@@ -89,3 +89,20 @@ test("restores synchronized object properties changed by client events", () => {
     object.getVariables().get("State").getChild("Score").getAsNumber()
   ).toBe(0);
 });
+
+test("keeps the first object when a create message repeats an ID", () => {
+  const firstObject = {
+    deleteFromScene: jest.fn(),
+  } as unknown as gdjs.RuntimeObject;
+  const repeatedObject = {
+    deleteFromScene: jest.fn(),
+  } as unknown as gdjs.RuntimeObject;
+  const runtimeScene = {} as gdjs.RuntimeScene;
+  const registry = new ClientObjectsRegistery(runtimeScene);
+
+  expect(registry.registerObject(2, firstObject)).toBe(firstObject);
+  expect(registry.registerObject(2, repeatedObject)).toBe(firstObject);
+  expect(registry.getObject(2)).toBe(firstObject);
+  expect(firstObject.deleteFromScene).not.toHaveBeenCalled();
+  expect(repeatedObject.deleteFromScene).toHaveBeenCalledWith(runtimeScene);
+});

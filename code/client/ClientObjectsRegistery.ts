@@ -21,8 +21,16 @@ export class ClientObjectsRegistery {
   }
 
   registerObject(id: number, runtimeObject: gdjs.RuntimeObject) {
+    const existingObject = this.objectsRegistery.get(id);
+    if (existingObject) {
+      if (existingObject !== runtimeObject)
+        runtimeObject.deleteFromScene(this.runtimeScene);
+      return existingObject;
+    }
+
     runtimeObject.thnkID = id;
     this.objectsRegistery.set(id, runtimeObject);
+    return runtimeObject;
   }
 
   getObject(id: number) {

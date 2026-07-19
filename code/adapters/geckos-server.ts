@@ -113,7 +113,14 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
 
     if (!geckos) throw new Error("Geckos not found!");
 
-    this.server = geckos({ label: "THNK" });
+    this.server = geckos({
+      label: "THNK",
+      ordered: true,
+      // Geckos turns an omitted value into 0 retransmissions. node-datachannel
+      // treats null as the fully reliable mode, which THNK's ordered state
+      // diffs require to keep delete/create messages from crossing each other.
+      maxRetransmits: null as unknown as number,
+    });
 
     this.server.onConnection((channel) => {
       // Generate a simple ID that is certainly unique,
