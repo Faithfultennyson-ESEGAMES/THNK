@@ -1,15 +1,37 @@
-const fs = require("fs");
 const net = require("net");
 const path = require("path");
 const { app, BrowserWindow } = require("electron");
 const remoteMain = require("@electron/remote/main");
+const { loadBundleIdentity } = require("./bundle-identity.cjs");
+
+const bundleRoot = path.resolve(__dirname, "..");
+let identity;
+try {
+  identity = loadBundleIdentity({
+    bundleRoot,
+    requestedAuthorityId: process.env.THNK_AUTHORITY_ID,
+    requestedMapId: process.env.THNK_MAP_ID,
+    expectedServerBuildId: process.env.THNK_EXPECTED_SERVER_BUILD_ID,
+  });
+} catch (error) {
+  console.error(`THNK_SERVER_PREFLIGHT_FAILED ${error.message}`);
+  process.exit(1);
+}
+
+process.env.THNK_AUTHORITY_ID = identity.authorityId;
+process.env.THNK_MAP_ID = identity.mapId;
+process.env.THNK_AUTHORITY_BOOTSTRAP_SCENE = identity.bootstrapScene;
+process.env.THNK_RUNTIME_GAME_ID = identity.gameId;
+process.env.THNK_RUNTIME_SERVER_BUILD_ID = identity.serverBuildId;
+process.env.THNK_RUNTIME_COMPATIBILITY_VERSION = identity.compatibilityVersion;
+process.env.THNK_RUNTIME_CLIENT_BUILD_ID = identity.clientBuildId;
+process.env.THNK_RUNTIME_PROTOCOL_VERSION = identity.protocolVersion;
+process.env.THNK_GECKOS_BRIDGE_PATH = path.join(__dirname, "geckos-bridge.cjs");
+
 const { createControlServer } = require("./control-server.cjs");
 const { sessionManager } = require("./session-manager.cjs");
 
-const bundleRoot = path.resolve(__dirname, "..");
-const manifest = JSON.parse(
-  fs.readFileSync(path.join(bundleRoot, "manifest.json"), "utf8")
-);
+const manifest = identity.manifest;
 const serverPort = manifest.runtime.port;
 const startupTimeout = Number(
   process.env.THNK_SERVER_START_TIMEOUT_MS || 30_000
@@ -33,7 +55,6 @@ if (
   (!Number.isInteger(controlPort) || controlPort < 1 || controlPort > 65_535)
 )
   throw new Error("THNK_CONTROL_PORT must be an integer from 1 to 65535.");
-
 if (
   sessionManager.enabled &&
   (typeof controlToken !== "string" || controlToken.length < 32)
@@ -42,12 +63,12 @@ if (
     "THNK_CONTROL_TOKEN must contain at least 32 characters in bridge mode."
   );
 
-process.env.THNK_GECKOS_BRIDGE_PATH = path.join(__dirname, "geckos-bridge.cjs");
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("disable-gpu");
 remoteMain.initialize();
 
 let serverWindow;
+let serverStartPromise;
 let controlServer;
 let shuttingDown = false;
 
@@ -85,27 +106,9 @@ const shutdown = () => {
   else app.quit();
 };
 
-for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, shutdown);
-
-app
-  .whenReady()
-  .then(async () => {
-    if (sessionManager.enabled) {
-      controlServer = createControlServer({
-        sessionManager,
-        controlToken,
-        onSessionEnd: (drain) => drain.finally(shutdown),
-      });
-      await new Promise((resolve, reject) => {
-        controlServer.once("error", reject);
-        controlServer.listen(controlPort, controlHost, () => {
-          controlServer.off("error", reject);
-          resolve();
-        });
-      });
-      console.log(`THNK_CONTROL_READY host=${controlHost} port=${controlPort}`);
-    }
-
+const startAuthority = () => {
+  if (serverStartPromise) return serverStartPromise;
+  serverStartPromise = (async () => {
     serverWindow = new BrowserWindow({
       show: false,
       width: 800,
@@ -142,7 +145,36 @@ app
     await serverWindow.loadFile(path.join(bundleRoot, "server", "index.html"));
     await waitForPort();
     sessionManager.setGameReady();
-    console.log(`THNK_SERVER_READY port=${serverPort}`);
+    console.log(
+      `THNK_SERVER_READY port=${serverPort} authority=${identity.authorityId} build=${identity.serverBuildId}`
+    );
+  })();
+  return serverStartPromise;
+};
+
+for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, shutdown);
+
+app
+  .whenReady()
+  .then(async () => {
+    if (sessionManager.enabled) {
+      controlServer = createControlServer({
+        sessionManager,
+        controlToken,
+        onSessionStart: startAuthority,
+        onSessionEnd: (drain) => drain.finally(shutdown),
+      });
+      await new Promise((resolve, reject) => {
+        controlServer.once("error", reject);
+        controlServer.listen(controlPort, controlHost, () => {
+          controlServer.off("error", reject);
+          resolve();
+        });
+      });
+      console.log(
+        `THNK_CONTROL_READY host=${controlHost} port=${controlPort} authority=${identity.authorityId}`
+      );
+    } else await startAuthority();
   })
   .catch((error) => {
     console.error(`THNK_SERVER_START_FAILED ${error.message}`);

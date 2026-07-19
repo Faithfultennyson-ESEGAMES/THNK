@@ -3,12 +3,13 @@ const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const FORMAT_VERSION = 3;
+const FORMAT_VERSION = 4;
 const ELECTRON_VERSION = "32.3.3";
 const ELECTRON_REMOTE_VERSION = "2.1.2";
 const GECKOS_VERSION = "3.1.0";
 const AGORA_TOKEN_VERSION = "2.0.5";
 const NODE_VERSION_RANGE = "18.20.x";
+const PROTOCOL_VERSION = "thnk-flatbuffers-v1";
 const repositoryRoot = path.resolve(__dirname, "../..");
 const runtimeTemplate = path.join(__dirname, "runtime");
 const extensionPaths = [
@@ -34,7 +35,15 @@ const walkEvents = function* (events = []) {
   }
 };
 
-const findServerEntry = (project) => {
+const literalString = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^"|"$/g, "");
+const validIdentifier = (value) =>
+  typeof value === "string" &&
+  /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
+
+const findServerAuthorities = (project) => {
   const matches = [];
   for (const layout of project.layouts || []) {
     for (const event of walkEvents(layout.events)) {
@@ -42,26 +51,84 @@ const findServerEntry = (project) => {
         if (instructionType(action) !== "THNK_GeckosServer::HostServer")
           continue;
         const port = Number(action.parameters?.[1]);
-        const gameScene = String(action.parameters?.[2] || "").replace(
-          /^"|"$/g,
-          ""
-        );
-        matches.push({ bootstrapScene: layout.name, gameScene, port });
+        const gameScene = literalString(action.parameters?.[2]);
+        const authorityId = literalString(action.parameters?.[3]);
+        matches.push({
+          authorityId,
+          bootstrapScene: layout.name,
+          gameScene,
+          port,
+        });
       }
     }
   }
-  if (matches.length !== 1)
+  if (matches.length < 1)
+    throw new Error("Expected at least one Geckos HostServer action, found 0.");
+  if (matches.length === 1 && !matches[0].authorityId)
+    matches[0].authorityId = "default";
+
+  const layouts = new Set((project.layouts || []).map((layout) => layout.name));
+  const ports = new Set();
+  const authorities = {};
+  for (const entry of matches) {
+    if (!validIdentifier(entry.authorityId))
+      throw new Error(
+        "Every authority in a multi-authority export needs a literal ID containing only letters, numbers, dot, underscore, colon, or hyphen."
+      );
+    if (authorities[entry.authorityId])
+      throw new Error(`Duplicate authority ID '${entry.authorityId}'.`);
+    if (!Number.isInteger(entry.port) || entry.port < 1 || entry.port > 65_535)
+      throw new Error(
+        "The Geckos HostServer port must be a literal from 1 to 65535."
+      );
+    if (!layouts.has(entry.gameScene))
+      throw new Error(`Server game scene '${entry.gameScene}' does not exist.`);
+    ports.add(entry.port);
+    authorities[entry.authorityId] = {
+      bootstrapScene: entry.bootstrapScene,
+      gameScene: entry.gameScene,
+    };
+  }
+  if (ports.size !== 1)
     throw new Error(
-      `Expected exactly one Geckos HostServer action, found ${matches.length}.`
+      "Every authority in one server artifact must use the same Geckos port."
     );
-  const entry = matches[0];
-  if (!Number.isInteger(entry.port) || entry.port < 1 || entry.port > 65_535)
+  return {
+    authorities: Object.fromEntries(
+      Object.entries(authorities).sort(([left], [right]) =>
+        left.localeCompare(right)
+      )
+    ),
+    port: [...ports][0],
+  };
+};
+
+const findServerEntry = (project) => {
+  const catalog = findServerAuthorities(project);
+  const entries = Object.values(catalog.authorities);
+  if (entries.length !== 1)
     throw new Error(
-      "The Geckos HostServer port must be a literal from 1 to 65535."
+      `Expected exactly one Geckos HostServer action, found ${entries.length}.`
     );
-  if (!project.layouts.some((layout) => layout.name === entry.gameScene))
-    throw new Error(`Server game scene '${entry.gameScene}' does not exist.`);
-  return entry;
+  return { ...entries[0], port: catalog.port };
+};
+
+const applyLegacyDefaultAuthority = (project, catalog) => {
+  if (
+    Object.keys(catalog.authorities).length !== 1 ||
+    !catalog.authorities.default
+  )
+    return;
+  for (const layout of project.layouts || []) {
+    for (const event of walkEvents(layout.events)) {
+      for (const action of event.actions || []) {
+        if (instructionType(action) !== "THNK_GeckosServer::HostServer")
+          continue;
+        action.parameters ||= [];
+        action.parameters[3] = '"default"';
+      }
+    }
+  }
 };
 
 const listFiles = (root, current = root) => {
@@ -157,7 +224,7 @@ const patchRuntimeOptions = (serverDirectory) => {
   const patched = source
     .replace(
       marker,
-      "gdjs.runtimeGameOptions = { thnkGeckosBridgePath: process.env.THNK_GECKOS_BRIDGE_PATH };"
+      "gdjs.runtimeGameOptions = { thnkGeckosBridgePath: process.env.THNK_GECKOS_BRIDGE_PATH, thnkAuthorityId: process.env.THNK_AUTHORITY_ID, thnkMapId: process.env.THNK_MAP_ID, thnkAuthorityBootstrapScene: process.env.THNK_AUTHORITY_BOOTSTRAP_SCENE };"
     )
     .replace(
       /"latestCompilationDirectory":"(?:\\.|[^"\\])*"/,
@@ -174,7 +241,7 @@ const patchRuntimeOptions = (serverDirectory) => {
     indexPath,
     indexSource.replace(
       constructor,
-      "new gdjs.RuntimeGame(gdjs.projectData, gdjs.runtimeGameOptions);"
+      "((gdjs.projectData.firstLayout = gdjs.runtimeGameOptions.thnkAuthorityBootstrapScene || gdjs.projectData.firstLayout), new gdjs.RuntimeGame(gdjs.projectData, gdjs.runtimeGameOptions));"
     )
   );
 };
@@ -190,7 +257,7 @@ const makePackageName = (name) =>
 const getDefaultControlPort = (serverPort) =>
   serverPort < 65_535 ? serverPort + 1 : 9209;
 
-const writeBundleFiles = (bundlePath, project, entry) => {
+const writeBundleFiles = (bundlePath, project, catalog, compatibility) => {
   fs.cpSync(runtimeTemplate, path.join(bundlePath, "runtime"), {
     recursive: true,
   });
@@ -219,9 +286,11 @@ const writeBundleFiles = (bundlePath, project, entry) => {
   fs.writeFileSync(
     path.join(bundlePath, "config.example.env"),
     `THNK_SERVER_START_TIMEOUT_MS=30000\n` +
+      `THNK_AUTHORITY_ID=\n` +
+      `THNK_MAP_ID=\n` +
       `THNK_BRIDGE_ENABLED=false\n` +
       `THNK_CONTROL_HOST=127.0.0.1\n` +
-      `THNK_CONTROL_PORT=${getDefaultControlPort(entry.port)}\n` +
+      `THNK_CONTROL_PORT=${getDefaultControlPort(catalog.port)}\n` +
       `THNK_CONTROL_TOKEN=\n` +
       `THNK_WEBHOOK_SECRET=\n` +
       `THNK_ALLOW_INSECURE_CALLBACKS=false\n` +
@@ -237,24 +306,36 @@ const writeBundleFiles = (bundlePath, project, entry) => {
   fs.writeFileSync(
     path.join(bundlePath, "README.md"),
     `# ${project.properties?.name || "GDevelop"} THNK server\n\n` +
-      `Generated server entry: \`${entry.bootstrapScene}\` -> \`${entry.gameScene}\`.\n\n` +
+      `Generated authorities: ${Object.entries(catalog.authorities)
+        .map(
+          ([id, authority]) =>
+            `\`${id}\` (\`${authority.bootstrapScene}\` -> \`${authority.gameScene}\`)`
+        )
+        .join(", ")}.\n\n` +
+      `Compatibility version: \`${compatibility.compatibilityVersion}\`; client build: \`${compatibility.clientBuildId}\`; protocol: \`${compatibility.protocolVersion}\`.\n\n` +
       `Use Node ${NODE_VERSION_RANGE} and Yarn 1.22.x.\n\n` +
       "```text\ncorepack yarn install --frozen-lockfile --production=true\nyarn start\n```\n\n" +
       "On a displayless Ubuntu 24.04 host, install Electron's runtime libraries and Xvfb, configure Electron's sandbox, then launch inside the virtual display:\n\n" +
       "```text\nsudo apt-get update\nsudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libx11-xcb1 libdrm2 libxkbcommon0 libatk-bridge2.0-0 libcups2 libatspi2.0-0 fonts-liberation\nsudo chown root:root node_modules/electron/dist/chrome-sandbox\nsudo chmod 4755 node_modules/electron/dist/chrome-sandbox\nxvfb-run -a --server-args='-screen 0 1024x768x24' yarn start\n```\n\n" +
-      `The authoritative Geckos server listens on port ${entry.port}. ` +
+      `The authoritative Geckos server listens on port ${catalog.port}. ` +
       "The Electron window is created hidden; stop with SIGINT or SIGTERM.\n\n" +
       "## Matchmaking bridge\n\n" +
       "The bridge is disabled by default, preserving direct THNK connections. To enable it, copy the values from `config.example.env` into the server environment, set `THNK_BRIDGE_ENABLED=true`, and provide independently generated random values of at least 32 characters for `THNK_CONTROL_TOKEN` and `THNK_WEBHOOK_SECRET`. Never place either secret in a game client.\n\n" +
       `The v1 control API defaults to \`127.0.0.1:${getDefaultControlPort(
-        entry.port
+        catalog.port
       )}\`. Bind its control routes only to a private or otherwise protected interface. Player admission JWTs are sent to Geckos in the HTTP \`Authorization\` header, never in a URL. Plain HTTP callback URLs are accepted only for loopback development when \`THNK_ALLOW_INSECURE_CALLBACKS=true\`.\n\n` +
       "## Agora session voice\n\n" +
       "Voice is opt-in. Set `THNK_VOICE_ENABLED=true`, inject `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` as server secrets, and set the public HTTPS `THNK_VOICE_TOKEN_URL` to the externally routed `/v1/voice/token` endpoint. Expose only that route to game clients; keep the other control routes private. The App Certificate must never be placed in a client export, URL, log, or source file. Loopback HTTP is available only for development with `THNK_ALLOW_INSECURE_VOICE_TOKEN_URL=true`.\n"
   );
 };
 
-const exportServer = ({ projectPath, outputPath }) => {
+const exportServer = ({
+  projectPath,
+  outputPath,
+  compatibilityVersion,
+  clientBuildId,
+  protocolVersion = PROTOCOL_VERSION,
+}) => {
   const sourcePath = path.resolve(projectPath);
   const destination = path.resolve(outputPath);
   if (!fs.existsSync(sourcePath))
@@ -263,12 +344,25 @@ const exportServer = ({ projectPath, outputPath }) => {
     throw new Error(`Output already exists: ${destination}`);
 
   const project = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
-  const entry = findServerEntry(project);
-  project.firstLayout = entry.bootstrapScene;
+  const catalog = findServerAuthorities(project);
+  applyLegacyDefaultAuthority(project, catalog);
+  const firstAuthority = Object.values(catalog.authorities)[0];
+  const projectVersion = project.properties?.version || "1.0.0";
+  const compatibility = {
+    compatibilityVersion: compatibilityVersion || projectVersion,
+    clientBuildId:
+      clientBuildId ||
+      `${project.properties?.projectUuid || "game"}:${projectVersion}`,
+    protocolVersion,
+  };
+  for (const [name, value] of Object.entries(compatibility))
+    if (!validIdentifier(value))
+      throw new Error(`${name} must be a valid identifier.`);
+  project.firstLayout = firstAuthority.bootstrapScene;
   project.layouts.sort((left, right) =>
-    left.name === entry.bootstrapScene
+    left.name === firstAuthority.bootstrapScene
       ? -1
-      : right.name === entry.bootstrapScene
+      : right.name === firstAuthority.bootstrapScene
       ? 1
       : 0
   );
@@ -312,7 +406,7 @@ const exportServer = ({ projectPath, outputPath }) => {
     assertGeneratedCode(serverDirectory);
     normalizeGeneratedIdentifiers(serverDirectory);
     patchRuntimeOptions(serverDirectory);
-    writeBundleFiles(staging, project, entry);
+    writeBundleFiles(staging, project, catalog, compatibility);
     fs.rmSync(projectBuildPath, { force: true });
     fs.rmSync(gdevelopProfile, { recursive: true, force: true });
 
@@ -324,23 +418,28 @@ const exportServer = ({ projectPath, outputPath }) => {
       project: {
         name: project.properties?.name || "",
         uuid: project.properties?.projectUuid || "",
+        gameId: project.properties?.projectUuid || "",
         version: project.properties?.version || "1.0.0",
       },
       buildTime,
       transport: "geckos",
-      entry,
+      authorities: catalog.authorities,
+      build: {
+        serverBuildId: "",
+        ...compatibility,
+      },
       runtime: {
         kind: "hidden-electron",
         entryPoint: "runtime/main.cjs",
         serverDirectory: "server",
-        port: entry.port,
+        port: catalog.port,
         electronVersion: ELECTRON_VERSION,
         nodeVersion: NODE_VERSION_RANGE,
       },
       control: {
         apiVersion: "v1",
         defaultHost: "127.0.0.1",
-        defaultPort: getDefaultControlPort(entry.port),
+        defaultPort: getDefaultControlPort(catalog.port),
         admissionTransport: "authorization-header",
         enabledByEnvironment: "THNK_BRIDGE_ENABLED",
       },
@@ -357,6 +456,7 @@ const exportServer = ({ projectPath, outputPath }) => {
       `${JSON.stringify(manifest, null, 2)}\n`
     );
     manifest.contentHash.value = hashBundleContent(staging);
+    manifest.build.serverBuildId = `sha256:${manifest.contentHash.value}`;
     fs.writeFileSync(
       path.join(staging, "manifest.json"),
       `${JSON.stringify(manifest, null, 2)}\n`
@@ -389,8 +489,31 @@ const validateBundle = (bundlePath) => {
     manifest.runtime.port > 65_535
   )
     throw new Error("Bundle contains an invalid server port.");
-  if (manifest.entry?.port !== manifest.runtime.port)
-    throw new Error("Bundle entry port does not match its runtime port.");
+  if (
+    !manifest.authorities ||
+    typeof manifest.authorities !== "object" ||
+    Array.isArray(manifest.authorities) ||
+    Object.keys(manifest.authorities).length < 1
+  )
+    throw new Error("Bundle must declare at least one authority.");
+  for (const [authorityId, authority] of Object.entries(manifest.authorities)) {
+    if (
+      !validIdentifier(authorityId) ||
+      typeof authority?.bootstrapScene !== "string" ||
+      !authority.bootstrapScene ||
+      typeof authority?.gameScene !== "string" ||
+      !authority.gameScene
+    )
+      throw new Error(`Bundle contains an invalid authority '${authorityId}'.`);
+  }
+  if (
+    manifest.project?.gameId !== manifest.project?.uuid ||
+    !validIdentifier(manifest.project?.gameId) ||
+    !validIdentifier(manifest.build?.compatibilityVersion) ||
+    !validIdentifier(manifest.build?.clientBuildId) ||
+    !validIdentifier(manifest.build?.protocolVersion)
+  )
+    throw new Error("Bundle contains invalid build compatibility metadata.");
   if (
     manifest.control?.apiVersion !== "v1" ||
     manifest.control?.admissionTransport !== "authorization-header" ||
@@ -411,6 +534,7 @@ const validateBundle = (bundlePath) => {
     manifest.runtime?.entryPoint,
     `${manifest.runtime?.serverDirectory}/index.html`,
     "runtime/control-server.cjs",
+    "runtime/bundle-identity.cjs",
     "runtime/geckos-bridge.cjs",
     "runtime/jwt-verifier.cjs",
     "runtime/session-manager.cjs",
@@ -458,6 +582,8 @@ const validateBundle = (bundlePath) => {
     throw new Error(
       `Bundle content hash mismatch: expected ${manifest.contentHash?.value}, got ${actualHash}.`
     );
+  if (manifest.build?.serverBuildId !== `sha256:${actualHash}`)
+    throw new Error("Bundle server build ID does not match its content hash.");
   return { bundlePath: root, manifest, contentHash: actualHash };
 };
 
@@ -493,7 +619,9 @@ const runBundle = (bundlePath) => {
 
 module.exports = {
   FORMAT_VERSION,
+  PROTOCOL_VERSION,
   exportServer,
+  findServerAuthorities,
   findServerEntry,
   hashBundleContent,
   normalizeGeneratedIdentifiers,

@@ -63,6 +63,7 @@ const readJson = (request) =>
 const createControlServer = ({
   sessionManager,
   controlToken,
+  onSessionStart = async () => {},
   onSessionEnd = () => {},
 }) =>
   http.createServer(async (request, response) => {
@@ -114,8 +115,11 @@ const createControlServer = ({
           session: sessionManager.getPublicState(),
         });
       if (request.method === "POST" && path === "/v1/session") {
-        const state = sessionManager.createSession(await readJson(request));
-        return sendJson(response, 201, { session: state });
+        sessionManager.createSession(await readJson(request));
+        await onSessionStart();
+        return sendJson(response, 201, {
+          session: sessionManager.getPublicState(),
+        });
       }
       if (request.method === "POST" && path === "/v1/session/end") {
         const input = await readJson(request);

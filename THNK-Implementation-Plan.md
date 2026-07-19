@@ -1,10 +1,24 @@
 # THNK Server Platform — Implementation Plan
 
-**Status:** Draft v1 plan
+**Status:** Draft v1 plan (M0-M5 complete; M6-M7 retain the cross-service and release-candidate work agreed after M4)
 
 **Prepared:** 2026-07-18
 
 **Source spec:** `THNK-Server-Platform-Blueprint.md`
+
+**Companion repositories:** Matchmaking and player identity/persistence are no longer in this repository's scope — they are two separate repositories, `THNK-Matchmaking-Implementation-Plan.md` and `THNK-PlayerProfile-Implementation-Plan.md`. This repository (THNK core) owns the runtime, the export/bundle contract, the Bridge, and the hooks those two services call into. It does not implement matchmaking logic, player identity, or persistent storage itself.
+
+**Resolved implementation details (2026-07-19):** M5 uses a content-addressed
+trust contract, not a misleading self-signed manifest. The exporter derives
+`serverBuildId` as `sha256:<verified bundle hash>`; a deployer or matchmaker
+registers that trusted ID, and the runtime can enforce it through
+`THNK_EXPECTED_SERVER_BUILD_ID`. In bridge mode the control API is started
+before GDevelop, validates the complete game/authority/map/build/version
+assignment, and only then launches the selected authority. M6 still owns the
+new detectable illegal-edit violation path, per-player pre-issued Agora grants
+and their refresh contract, blocked-player checks, and Player Profile document
+hooks. The two companion plan files now exist here as specifications; their
+service implementations remain separate repositories.
 
 ## 1. What we are building
 
@@ -36,17 +50,20 @@ The matchmaker owns grouping and player identity. The bridge owns admission and 
 These choices close the blueprint's open questions for the first implementation:
 
 | Topic                | v1 decision                                                                                             | Reason                                                                                                      |
-| -------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| -------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | THNK baseline        | Start from upstream `master`, then inspect selected `v2` changes; do not build from `v2` wholesale      | `master` is the latest concrete implementation; `v2` describes itself as WIP explorations                   |
 | Session isolation    | One operating-system process/container per game session                                                 | Matches THNK's current single-world assumptions and makes crashes, memory, logs, and cleanup session-scoped |
 | Matchmaker callbacks | Signed HTTPS webhooks with event IDs, timestamps, retry, and idempotency                                | Simpler to deploy and test than a persistent control connection                                             |
 | Admission tokens     | Short-lived asymmetric JWTs; matchmaker keeps the private key and the bridge receives only a public key | Avoids giving every runtime authority to mint player tokens                                                 |
 | Agora secrets        | `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` are server environment variables/secrets                     | The certificate must never be present in a GDevelop client export                                           |
-| THNK Rooms/Relay     | Not a v1 dependency                                                                                     | Its documented status and production readiness are uncertain                                                |
+| THNK Rooms/Relay     | Not a v1 dependency                                                                                      | Its documented status and production readiness are uncertain                                                |
 | Transport            | Geckos.io remains the initial data transport                                                            | It is the existing dedicated-server-shaped adapter and gives the shortest path to a proof                   |
 | General THNK auth    | Bridge sessions only in v1                                                                              | Direct P2P/local behavior remains compatible; broader adapter auth can be designed after the bridge works   |
 | GDevelop editor UI   | No `newIDE` fork in v1                                                                                  | The supported surface is the CLI plus generated GDevelop extensions                                         |
 | Voice coupling       | Voice is side-band; no audio crosses the THNK state protocol                                            | Prevents voice concerns from destabilizing authoritative state sync                                         |
+| Multi-authority (added post-M4) | One exported artifact may declare multiple named authorities (modes); the runtime boots exactly one per process, selected cold at start and checked against the verified, externally trusted content-addressed manifest | Lets one build serve many modes/levels without a separate matchmaker or bridge per mode |
+| Team/party tags (added post-M4) | The Bridge carries an opaque `tags` map through admission claims without interpreting it | Keeps team/party sizing and assignment logic entirely in THNK Matchmaking; Core stays generic |
+| Cross-service hooks (added post-M4) | Core calls into THNK Player Profile for player documents and blocked-status, and accepts an optional pre-issued voice grant from THNK Matchmaking | These are the concrete integration points the two companion repositories depend on; Core must expose them even though it doesn't implement matchmaking or identity itself |
 
 ## 3. Gates before feature work
 
@@ -240,35 +257,103 @@ Automatic voice join happens only after game admission succeeds. Failure to join
 - Per-listener mute/volume changes affect only the local listener.
 - Leave, disconnect, reconnect, token refresh, microphone denial, and Agora outage paths are handled without breaking gameplay.
 
-### M5 — Product hardening and release candidate
+### M5 — Multi-authority manifest and admission hardening
+
+**Implementation status (2026-07-19):** Complete on
+`platform/m5-multi-authority`. Format-v4 artifacts contain a deterministic
+authority catalog and content-addressed build identity. The supervisor,
+assignment/version claims, optional map identity, signed read-only player
+tags, legacy single-authority migration, Windows two-client proof, and Ubuntu
+24.04/Xvfb gates are recorded in
+`docs/project/M5-MULTI-AUTHORITY.md`.
+
+**Why this milestone exists:** M3's exporter and control API assume exactly
+one bootstrap scene and one game scene per artifact, and M3's admission check
+validates session/player/roster but not authority, build, or version
+identity. Discussed after M4: a single exported artifact should be able to
+declare several selectable server authorities (e.g. Duel, Racing, Battle
+Royale as different GDevelop scenes). The supervisor must reject a wrong
+session assignment before the game loads; after a valid assignment starts the
+authority, per-player admission must still reject a token minted for the wrong
+authority, build, or client version before creating a player connection.
+
+**Work**
+
+- Extend the exporter and `manifest.json` to declare an authority catalog (`authorities: { id: { bootstrapScene, gameScene } }`) instead of one fixed `bootstrapScene`/`gameScene` pair. Bump the bundle format version.
+- Add cold-start authority selection: the runtime reads a requested authority ID (e.g. `THNK_AUTHORITY_ID`, optionally `THNK_MAP_ID`) at process start, validates it against the integrity-checked and externally trusted manifest's authority catalog, and refuses to boot GDevelop at all for an unknown ID.
+- Extend admission JWT claims beyond the existing `sessionId`/`playerId`/`jti`/roster to include `authorityId`, `serverBuildId` (content hash), `compatibilityVersion`, `clientBuildId`, `protocolVersion`, and an opaque `tags` object.
+- Enforce the new claims at admission: reject wrong game, wrong authority, wrong server build, and unsupported compatibility version, returning a stable error (e.g. `client_update_required` for version mismatches) in addition to the existing M3 rejection cases.
+- Expose `tags` claim values to GDevelop event sheets as read-only expressions (e.g. `GetPlayerTag("team")`); Core applies only bounded flat-scalar structure and exact roster/signature checks, and does not interpret matchmaking meaning or assign tag values.
+
+**Exit criteria**
+
+- One exported artifact contains at least two distinct authority scenes (a fixture equivalent to Duel/Racing); starting the process with each authority ID boots only that scene.
+- A wrong authority/build/version session assignment is rejected before the game loads. After a valid assignment starts the authority, a token minted for authority A is rejected by authority B, a token for another `serverBuildId` is rejected, and an unsupported `compatibilityVersion` receives a stable error before a player connection is created.
+- An unknown authority ID passed at process start never reaches GDevelop initialization.
+- `GetPlayerTag` returns exactly the value carried in the signed token and cannot be influenced by client-side manipulation.
+- Full repository gates (frozen install, TypeScript, Jest, generated-extension build, fixture/bundle validation) pass, and the new adversarial cases (wrong authority, wrong build, wrong compatibility version, unknown authority ID) have dedicated regression tests, consistent with M1-M4's testing discipline.
+
+### M6 — Cross-service integration hooks
+
+**Why this milestone exists:** THNK Matchmaking and THNK Player Profile are
+separate repositories, but each depends on specific hooks that only Core can
+provide: a way to load/save a player's persistent document during a session,
+a way to report cheating/trust violations, a way to know a player is
+blocked before admitting them, and a way to accept a voice grant issued
+externally instead of always minting one from bundle-local Agora credentials.
+None of this exists yet — M4 only built bundle-local voice minting, and
+nothing today reports illegal-edit rejections anywhere or loads any
+persistent player data.
+
+**Work**
+
+- Add a player-document hook: on successful admission, the Bridge calls THNK Player Profile's internal document API (`GET /internal/players/:id/document?gameId=`) for each admitted player and exposes the result to GDevelop as new `Get Player Variable`/`Set Player Variable` actions and expressions. `Set` is restricted to server-tagged events only, mirroring the existing `State.` variable trust model exactly. On relevant events/session end, the Bridge writes the current value back via the document API's `PUT`.
+- First add a detectable illegal-client-edit violation path—the M1 behavior currently prevents and overwrites an edit but does not classify the attempt. When that detector fires, emit a `trust.violation` webhook (`session`, `player`, `violationType`, `timestamp`) using the exact same signed-webhook transport already built for `session.*`/`player.*` events in M3—no new transport.
+- Add a blocked-player check at admission: call THNK Player Profile's internal blocked-status endpoint before admitting a player; reject if blocked, using the same stable-error pattern as M5's new rejections.
+- Add optional roster-keyed voice-grant acceptance to `POST /v1/session`: `voiceGrants[playerId]` contains that player's channel, UID, token, expiry, refresh URL, and an explicit refresh-ownership contract. The Bridge must never reuse one session-wide token for every player. When no external grant is supplied, M4's existing bundle-local minting remains the fallback for standalone THNK use without a matchmaker.
+
+**Exit criteria**
+
+- A session loads a real (fixture) player document from a stub Player Profile service, a server-tagged event mutates it, and the mutated value is persisted and correctly reloaded in a fresh session for the same player.
+- A client-tagged event cannot invoke the write action (rejected at the extension level, not just silently ignored at runtime).
+- A deliberately triggered illegal client edit (reusing the M1 fixture's adversarial case) produces exactly one delivered, correctly signed `trust.violation` webhook.
+- A player marked blocked by a stub Player Profile service is rejected at admission without the GDevelop process ever loading.
+- A session started with a pre-issued voice grant never reads or requires bundle-local Agora credentials; a session started without one behaves identically to the existing M4 path, with a regression test proving both paths still work.
+- Full repository gates pass, including new adversarial/contract tests for each of the above.
+
+### M7 — Product hardening and release candidate
+
+*(This is the milestone originally numbered M5 in the pre-M5-update version of
+this plan; content unchanged except for the note on the stub matchmaker.)*
 
 **Work**
 
 - Run the complete two-client test plan locally and on a remote host.
 - Add structured logs keyed by `sessionId`, `playerId`, connection ID, and lifecycle event ID, with tokens/secrets redacted.
 - Add health/readiness checks, graceful shutdown, payload limits, rate limits, and dependency timeouts.
-- Publish a container example, stub matchmaker, fixture game, configuration reference, threat model, and troubleshooting guide.
-- Define bundle and control API compatibility/versioning policy.
+- Publish a container example, stub matchmaker, fixture game, configuration reference, threat model, and troubleshooting guide. The "stub matchmaker" may now be either a minimal stand-in or the real THNK Matchmaking repository at whatever milestone it has reached.
+- Define bundle and control API compatibility/versioning policy (formalizing the `compatibilityVersion`/`serverBuildId`/`clientBuildId` fields introduced in M5).
 
 **Exit criteria**
 
 - A new developer can export, launch, start, join, play, speak, leave, and stop the fixture by following only repository documentation.
 - CI proves build, unit tests, integration tests, secret scanning, and the headless smoke test.
 - Known limitations and out-of-scope items are documented.
+- A full end-to-end run against real THNK Matchmaking and THNK Player Profile deployments (not just stubs) is performed at least once and recorded, even though those two repositories are tested primarily in their own plans.
 
 ## 5. Test strategy
 
 Testing is layered so protocol and security failures are caught before full GDevelop tests:
 
 | Layer       | Coverage                                                                                                                                |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit        | token claims, roster rules, state transitions, webhook signatures/retries, channel/UID derivation, config validation                    |
-| Contract    | matchmaker control API, webhook schema, bundle manifest, error codes, compatibility versions                                            |
-| Integration | Geckos connect/disconnect/reconnect, server process lifecycle, exported artifact boot, Agora token generation                           |
-| End-to-end  | stub matchmaker + exported fixture + two clients + authoritative movement/state + voice                                                 |
-| Adversarial | expired/wrong-session/replayed tokens, duplicate starts, abrupt disconnects, oversized payloads, callback outage, secret leakage checks |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit        | token claims, roster rules, state transitions, webhook signatures/retries, channel/UID derivation, config validation, authority-catalog validation, tag passthrough |
+| Contract    | matchmaker control API, webhook schema, bundle manifest, error codes, compatibility versions, Player Profile document/blocked-status API shape |
+| Integration | Geckos connect/disconnect/reconnect, server process lifecycle, exported artifact boot, Agora token generation, multi-authority cold start, document load/save round trip |
+| End-to-end  | stub matchmaker + exported fixture + two clients + authoritative movement/state + voice; and, from M6 onward, a real (or realistic stub) Player Profile + Matchmaking pairing |
+| Adversarial | expired/wrong-session/replayed tokens, duplicate starts, abrupt disconnects, oversized payloads, callback outage, secret leakage checks, wrong-authority/wrong-build/wrong-compatibility tokens, blocked-player admission attempts |
 
-Every bug found manually in M1–M5 should first gain the smallest useful regression test.
+Every bug found manually in M1–M7 should first gain the smallest useful regression test.
 
 ## 6. Security and operational requirements
 
@@ -279,16 +364,19 @@ Every bug found manually in M1–M5 should first gain the smallest useful regres
 - Allowed JWT algorithms and issuers are configured explicitly; algorithm fallback is forbidden.
 - Session and player identifiers are validated before use in paths, logs, metrics, process arguments, or Agora identifiers.
 - The runtime has graceful termination and a maximum session duration so abandoned processes are reclaimable.
-- v1 promises process isolation, not multi-session scheduling, autoscaling, failover, persistence, or DDoS protection.
+- Calls into THNK Player Profile's internal document/blocked-status API use their own service-to-service credential, distinct from player admission JWTs and from the matchmaker's control-API credential.
+- A pre-issued voice grant accepted from a matchmaker is used as-is and never logged in full.
+- v1 promises process isolation, not multi-session scheduling, autoscaling, failover, persistence beyond the player-document hook, or DDoS protection.
 
 ## 7. Out of scope for v1
 
-- Matchmaking algorithms, lobby UI, ELO/ranking, accounts, or player databases.
+- Matchmaking algorithms, lobby UI, ELO/ranking, accounts, or player databases — these live entirely in THNK Matchmaking and THNK Player Profile; Core only exposes the hooks (M6) those services call.
+- Team/party *assignment logic* (deciding who's on which team) — Core only carries the resulting `tags` claim (M5); it never decides team membership itself.
 - Multiple game sessions inside one THNK process.
 - A GDevelop `newIDE` export button.
 - THNK Rooms/Relay or THNK Cloud completion.
 - General authentication for Local/P2P/direct Geckos adapters.
-- State persistence, replicas/failover, rollback netcode, teams, or split screen.
+- State persistence beyond the player-document hook (M6), replicas/failover, rollback netcode, or split screen.
 - Server-side audio mixing or recording.
 
 ## 8. First executable work package
@@ -307,4 +395,4 @@ This work package deliberately proves the riskiest inherited assumption before w
 
 ## 9. Definition of v1 done
 
-V1 is complete when a developer can take the repository's fixture THNK game, run one CLI export, deploy the resulting artifact, have an arbitrary stub matchmaker start a single isolated session, admit two signed-in clients into an authoritative shared world, automatically connect them to session voice, receive reliable lifecycle callbacks, and shut the process down cleanly—with no private credential present in the client bundle.
+V1 is complete when a developer can take the repository's fixture THNK game with at least two distinct authorities, run one CLI export, deploy the resulting artifact, have an arbitrary stub matchmaker (or a real THNK Matchmaking deployment) start an isolated session for a specific authority and build, admit two signed-in clients whose tokens are validated against authority/build/compatibility/roster, load and persist a real player document through THNK Player Profile, automatically connect them to session voice (whether bundle-minted or matchmaker-granted), report an illegal-edit attempt as a trust-violation webhook, reject a blocked player at admission, receive reliable lifecycle callbacks, and shut the process down cleanly — with no private credential present in the client bundle, and with the same full-Linux-host testing rigor used for M1-M4 applied to every new capability in M5 and M6 before M7's release-candidate work begins.

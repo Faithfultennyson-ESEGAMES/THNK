@@ -27,6 +27,27 @@ const validClaimNamespace = (value) =>
   value.length <= 512 &&
   !/[\u0000-\u001f\u007f]/.test(value);
 
+const normalizeTags = (value, ErrorType = AdmissionError) => {
+  if (value === undefined) return Object.freeze({});
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new ErrorType("invalid_tags");
+  const entries = Object.entries(value);
+  if (entries.length > 32) throw new ErrorType("too_many_tags");
+  const tags = {};
+  for (const [key, tagValue] of entries) {
+    if (!validIdentifier(key) || key.length > 64)
+      throw new ErrorType("invalid_tag_key");
+    if (
+      !["string", "number", "boolean"].includes(typeof tagValue) ||
+      (typeof tagValue === "string" && tagValue.length > 256) ||
+      (typeof tagValue === "number" && !Number.isFinite(tagValue))
+    )
+      throw new ErrorType("invalid_tag_value");
+    tags[key] = tagValue;
+  }
+  return Object.freeze(tags);
+};
+
 const audienceMatches = (claim, expected) =>
   typeof claim === "string"
     ? claim === expected
@@ -115,6 +136,18 @@ const createJwtVerifier = ({
     if (!validIdentifier(claims.playerId))
       throw new AdmissionError("invalid_player_id");
     if (!validIdentifier(claims.jti)) throw new AdmissionError("jti_required");
+    for (const [claimName, errorCode] of [
+      ["gameId", "invalid_game_id"],
+      ["authorityId", "invalid_authority_id"],
+      ["serverBuildId", "invalid_server_build_id"],
+      ["compatibilityVersion", "invalid_compatibility_version"],
+      ["clientBuildId", "invalid_client_build_id"],
+      ["protocolVersion", "invalid_protocol_version"],
+    ])
+      if (!validIdentifier(claims[claimName]))
+        throw new AdmissionError(errorCode);
+    if (claims.mapId !== undefined && !validIdentifier(claims.mapId))
+      throw new AdmissionError("invalid_map_id");
 
     return Object.freeze({
       sessionId: claims.sessionId,
@@ -122,8 +155,21 @@ const createJwtVerifier = ({
       jti: claims.jti,
       issuedAt: claims.iat,
       expiresAt: claims.exp,
+      gameId: claims.gameId,
+      authorityId: claims.authorityId,
+      mapId: claims.mapId || "",
+      serverBuildId: claims.serverBuildId,
+      compatibilityVersion: claims.compatibilityVersion,
+      clientBuildId: claims.clientBuildId,
+      protocolVersion: claims.protocolVersion,
+      tags: normalizeTags(claims.tags),
     });
   };
 };
 
-module.exports = { AdmissionError, createJwtVerifier, validIdentifier };
+module.exports = {
+  AdmissionError,
+  createJwtVerifier,
+  normalizeTags,
+  validIdentifier,
+};

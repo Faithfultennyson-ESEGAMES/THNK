@@ -3,6 +3,7 @@ const { EventEmitter } = require("events");
 const {
   AdmissionError,
   createJwtVerifier,
+  normalizeTags,
   validIdentifier,
 } = require("./jwt-verifier.cjs");
 const { WebhookOutbox } = require("./webhook-outbox.cjs");
@@ -43,6 +44,7 @@ class SessionManager extends EventEmitter {
     outboxOptions = {},
     playerDrainTimeoutMs = 3_000,
     voiceManager = new VoiceTokenManager(),
+    runtimeIdentity = {},
   } = {}) {
     super();
     this.enabled = enabled;
@@ -54,6 +56,7 @@ class SessionManager extends EventEmitter {
     this.outboxOptions = outboxOptions;
     this.playerDrainTimeoutMs = playerDrainTimeoutMs;
     this.voiceManager = voiceManager;
+    this.runtimeIdentity = Object.freeze({ ...runtimeIdentity });
     this.gameReady = false;
     this.session = undefined;
     this.verifier = undefined;
@@ -66,6 +69,16 @@ class SessionManager extends EventEmitter {
 
   setGameReady(value = true) {
     this.gameReady = value;
+    if (value && this.session?.status === "starting") {
+      this.session.status = "active";
+      this.outbox.enqueue("session.started", this.session.sessionId, {
+        data: {
+          metadata: this.session.metadata,
+          authorityId: this.session.authorityId,
+          serverBuildId: this.session.serverBuildId,
+        },
+      });
+    }
   }
 
   isReady() {
@@ -93,17 +106,43 @@ class SessionManager extends EventEmitter {
       throw new BridgeError("webhook_secret_not_configured", 500);
     if (!validIdentifier(input?.sessionId))
       throw new BridgeError("invalid_session_id");
+    const runtime = this.runtimeIdentity;
+    for (const [name, value] of Object.entries(runtime)) {
+      if (name === "mapId" && value === "") continue;
+      if (!validIdentifier(value))
+        throw new BridgeError(`runtime_${name}_not_configured`, 500);
+    }
+    if (input.gameId !== runtime.gameId)
+      throw new BridgeError("wrong_game", 409);
+    if (input.authorityId !== runtime.authorityId)
+      throw new BridgeError("wrong_authority", 409);
+    if ((input.mapId || "") !== (runtime.mapId || ""))
+      throw new BridgeError("wrong_map", 409);
+    if (input.serverBuildId !== runtime.serverBuildId)
+      throw new BridgeError("wrong_server_build", 409);
+    if (
+      input.compatibilityVersion !== runtime.compatibilityVersion ||
+      input.clientBuildId !== runtime.clientBuildId ||
+      input.protocolVersion !== runtime.protocolVersion
+    )
+      throw new BridgeError("client_update_required", 426);
     if (!Array.isArray(input.players) || input.players.length < 1)
       throw new BridgeError("players_required");
     if (input.players.length > 256) throw new BridgeError("roster_too_large");
 
-    const roster = new Set();
+    const roster = new Map();
     for (const player of input.players) {
       const playerId = typeof player === "string" ? player : player?.playerId;
       if (!validIdentifier(playerId))
         throw new BridgeError("invalid_player_id");
       if (roster.has(playerId)) throw new BridgeError("duplicate_player_id");
-      roster.add(playerId);
+      roster.set(
+        playerId,
+        normalizeTags(
+          typeof player === "string" ? undefined : player.tags,
+          BridgeError
+        )
+      );
     }
     if (input.reconnectPolicy && input.reconnectPolicy !== "fresh-token")
       throw new BridgeError("unsupported_reconnect_policy");
@@ -142,8 +181,15 @@ class SessionManager extends EventEmitter {
     });
     this.session = {
       sessionId: input.sessionId,
-      status: "active",
+      status: this.gameReady ? "active" : "starting",
       createdAt: new Date(this.now()).toISOString(),
+      gameId: runtime.gameId,
+      authorityId: runtime.authorityId,
+      mapId: runtime.mapId || "",
+      serverBuildId: runtime.serverBuildId,
+      compatibilityVersion: runtime.compatibilityVersion,
+      clientBuildId: runtime.clientBuildId,
+      protocolVersion: runtime.protocolVersion,
       callbackUrl,
       reconnectPolicy: "fresh-token",
       roster,
@@ -158,9 +204,14 @@ class SessionManager extends EventEmitter {
         algorithm: input.tokenVerification.algorithm || "RS256",
       },
     };
-    this.outbox.enqueue("session.started", this.session.sessionId, {
-      data: { metadata: this.session.metadata },
-    });
+    if (this.session.status === "active")
+      this.outbox.enqueue("session.started", this.session.sessionId, {
+        data: {
+          metadata: this.session.metadata,
+          authorityId: this.session.authorityId,
+          serverBuildId: this.session.serverBuildId,
+        },
+      });
     return this.getPublicState();
   }
 
@@ -176,8 +227,29 @@ class SessionManager extends EventEmitter {
     const claims = this.verifier(match[1]);
     if (claims.sessionId !== this.session.sessionId)
       throw new AdmissionError("wrong_session", 403);
+    if (claims.gameId !== this.session.gameId)
+      throw new AdmissionError("wrong_game", 403);
+    if (claims.authorityId !== this.session.authorityId)
+      throw new AdmissionError("wrong_authority", 403);
+    if (claims.mapId !== this.session.mapId)
+      throw new AdmissionError("wrong_map", 403);
+    if (claims.serverBuildId !== this.session.serverBuildId)
+      throw new AdmissionError("wrong_server_build", 403);
+    if (
+      claims.compatibilityVersion !== this.session.compatibilityVersion ||
+      claims.clientBuildId !== this.session.clientBuildId ||
+      claims.protocolVersion !== this.session.protocolVersion
+    )
+      throw new AdmissionError("client_update_required", 426);
     if (!this.session.roster.has(claims.playerId))
       throw new AdmissionError("player_not_rostered", 403);
+    const expectedTags = this.session.roster.get(claims.playerId);
+    const tagsMatch =
+      Object.keys(expectedTags).length === Object.keys(claims.tags).length &&
+      Object.entries(expectedTags).every(
+        ([key, value]) => claims.tags[key] === value
+      );
+    if (!tagsMatch) throw new AdmissionError("wrong_player_tags", 403);
     if (this.usedTokenIds.has(claims.jti))
       throw new AdmissionError("token_replayed", 409);
     if (
@@ -193,6 +265,14 @@ class SessionManager extends EventEmitter {
       admissionId,
       tokenId: claims.jti,
       expiresAt: claims.expiresAt,
+      gameId: claims.gameId,
+      authorityId: claims.authorityId,
+      mapId: claims.mapId,
+      serverBuildId: claims.serverBuildId,
+      compatibilityVersion: claims.compatibilityVersion,
+      clientBuildId: claims.clientBuildId,
+      protocolVersion: claims.protocolVersion,
+      tags: claims.tags,
     });
     this.usedTokenIds.add(claims.jti);
     this.pendingAdmissions.set(admissionId, identity);
@@ -200,7 +280,7 @@ class SessionManager extends EventEmitter {
     try {
       const thnkVoice = this.voiceManager.prepareAdmission({
         ...identity,
-        players: [...this.session.roster],
+        players: [...this.session.roster.keys()],
       });
       return thnkVoice
         ? { thnkIdentity: identity, thnkVoice }
@@ -235,6 +315,7 @@ class SessionManager extends EventEmitter {
     this.outbox.enqueue("player.joined", this.session.sessionId, {
       playerId: identity.playerId,
       connectionId,
+      data: { tags: identity.tags },
     });
     return true;
   }
@@ -248,6 +329,7 @@ class SessionManager extends EventEmitter {
     this.outbox.enqueue("player.left", this.session.sessionId, {
       playerId: identity.playerId,
       connectionId,
+      data: { tags: identity.tags },
     });
     if (this.activePlayers.size === 0) this.emit("players-drained");
   }
@@ -296,8 +378,16 @@ class SessionManager extends EventEmitter {
       sessionId: this.session.sessionId,
       status: this.session.status,
       createdAt: this.session.createdAt,
+      gameId: this.session.gameId,
+      authorityId: this.session.authorityId,
+      mapId: this.session.mapId,
+      serverBuildId: this.session.serverBuildId,
+      compatibilityVersion: this.session.compatibilityVersion,
+      clientBuildId: this.session.clientBuildId,
+      protocolVersion: this.session.protocolVersion,
       reconnectPolicy: this.session.reconnectPolicy,
-      roster: [...this.session.roster],
+      roster: [...this.session.roster.keys()],
+      playerTags: Object.fromEntries(this.session.roster),
       metadata: structuredClone(this.session.metadata),
       tokenVerification: { ...this.session.tokenVerification },
       connectedPlayers: [...this.activePlayers.keys()],
@@ -334,6 +424,15 @@ const sessionManager = new SessionManager({
   webhookSecret: process.env.THNK_WEBHOOK_SECRET,
   allowInsecureCallbacks: process.env.THNK_ALLOW_INSECURE_CALLBACKS === "true",
   voiceManager,
+  runtimeIdentity: {
+    gameId: process.env.THNK_RUNTIME_GAME_ID,
+    authorityId: process.env.THNK_AUTHORITY_ID,
+    mapId: process.env.THNK_MAP_ID || "",
+    serverBuildId: process.env.THNK_RUNTIME_SERVER_BUILD_ID,
+    compatibilityVersion: process.env.THNK_RUNTIME_COMPATIBILITY_VERSION,
+    clientBuildId: process.env.THNK_RUNTIME_CLIENT_BUILD_ID,
+    protocolVersion: process.env.THNK_RUNTIME_PROTOCOL_VERSION,
+  },
 });
 
 module.exports = { BridgeError, SessionManager, sessionManager };

@@ -1,8 +1,10 @@
 import {
+  getCurrentPlayerTag,
   markObjectAsOwned,
   pickOwnedObjects,
   releasePlayerContext,
   resetPlayerContexts,
+  setPlayerTags,
   switchPlayerContext,
 } from "server/PlayerContext";
 
@@ -31,6 +33,24 @@ beforeAll(() => {
       },
     }
   );
+});
+
+test("exposes immutable matchmaking tags only in the selected player context", () => {
+  const tags = { team: "A", seed: 7, captain: true };
+  setPlayerTags("user-a", tags);
+  tags.team = "tampered";
+
+  switchPlayerContext("user-a");
+  expect(getCurrentPlayerTag("team")).toBe("A");
+  expect(getCurrentPlayerTag("seed")).toBe("7");
+  expect(getCurrentPlayerTag("captain")).toBe("true");
+
+  switchPlayerContext("user-b");
+  expect(getCurrentPlayerTag("team")).toBe("");
+
+  releasePlayerContext("user-a");
+  switchPlayerContext("user-a");
+  expect(getCurrentPlayerTag("team")).toBe("");
 });
 
 afterEach(resetPlayerContexts);

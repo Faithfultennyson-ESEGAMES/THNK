@@ -10,6 +10,15 @@ const crypto = require("crypto");
 const keys = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
 const publicKey = keys.publicKey.export({ type: "spki", format: "pem" });
 const controlToken = "control-token-that-is-at-least-32-characters";
+const RUNTIME_IDENTITY = Object.freeze({
+  gameId: "game-1",
+  authorityId: "duel",
+  mapId: "arena-1",
+  serverBuildId: `sha256:${"a".repeat(64)}`,
+  compatibilityVersion: "1",
+  clientBuildId: "client-1",
+  protocolVersion: "thnk-flatbuffers-v1",
+});
 let server;
 
 afterEach(async () => {
@@ -40,6 +49,7 @@ test("serves authenticated one-session control lifecycle and health", async () =
     webhookSecret: "w".repeat(32),
     allowInsecureCallbacks: true,
     fetchImpl: async () => ({ ok: true, status: 204 }),
+    runtimeIdentity: RUNTIME_IDENTITY,
   });
   manager.setGameReady();
   server = createControlServer({
@@ -69,6 +79,7 @@ test("serves authenticated one-session control lifecycle and health", async () =
 
   const input = {
     sessionId: "session-api",
+    ...RUNTIME_IDENTITY,
     players: ["alice", "bob"],
     callbackUrl: "http://127.0.0.1:9999/events",
     tokenVerification: {
@@ -113,6 +124,59 @@ test("serves authenticated one-session control lifecycle and health", async () =
     body: { session: { status: "ending" } },
   });
   await endDrain;
+});
+
+test("does not start GDevelop until the complete session assignment is valid", async () => {
+  const onSessionStart = jest.fn(async () => {});
+  const manager = new SessionManager({
+    enabled: true,
+    webhookSecret: "w".repeat(32),
+    allowInsecureCallbacks: true,
+    fetchImpl: async () => ({ ok: true, status: 204 }),
+    runtimeIdentity: RUNTIME_IDENTITY,
+  });
+  server = createControlServer({
+    sessionManager: manager,
+    controlToken,
+    onSessionStart,
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  const input = {
+    sessionId: "supervised-session",
+    ...RUNTIME_IDENTITY,
+    players: ["alice"],
+    callbackUrl: "http://127.0.0.1:9999/events",
+    tokenVerification: {
+      publicKey,
+      keyId: "api-key",
+      issuer: "api-matchmaker",
+      audience: "api-server",
+    },
+  };
+
+  await expect(
+    request(baseUrl, "/v1/session", {
+      method: "POST",
+      token: controlToken,
+      body: { ...input, authorityId: "racing" },
+    })
+  ).resolves.toMatchObject({
+    status: 409,
+    body: { error: "wrong_authority" },
+  });
+  expect(onSessionStart).not.toHaveBeenCalled();
+  expect(manager.getPublicState()).toBeNull();
+
+  await expect(
+    request(baseUrl, "/v1/session", {
+      method: "POST",
+      token: controlToken,
+      body: input,
+    })
+  ).resolves.toMatchObject({ status: 201 });
+  expect(onSessionStart).toHaveBeenCalledTimes(1);
 });
 
 test("never authorizes control requests when the server secret is absent", async () => {

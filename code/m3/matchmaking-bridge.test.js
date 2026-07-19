@@ -18,6 +18,15 @@ const keys = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
 const publicKey = keys.publicKey.export({ type: "spki", format: "pem" });
 const NOW_MS = Date.parse("2026-07-19T12:00:00.000Z");
 const NOW_SECONDS = Math.floor(NOW_MS / 1000);
+const RUNTIME_IDENTITY = Object.freeze({
+  gameId: "game-1",
+  authorityId: "duel",
+  mapId: "arena-1",
+  serverBuildId: `sha256:${"a".repeat(64)}`,
+  compatibilityVersion: "1",
+  clientBuildId: "client-1",
+  protocolVersion: "thnk-flatbuffers-v1",
+});
 
 const signToken = (overrides = {}, headerOverrides = {}) => {
   const header = {
@@ -34,6 +43,8 @@ const signToken = (overrides = {}, headerOverrides = {}) => {
     jti: "token-1",
     iat: NOW_SECONDS,
     exp: NOW_SECONDS + 120,
+    ...RUNTIME_IDENTITY,
+    tags: {},
     ...overrides,
   };
   const encodedHeader = Buffer.from(JSON.stringify(header)).toString(
@@ -53,6 +64,7 @@ const signToken = (overrides = {}, headerOverrides = {}) => {
 
 const sessionInput = (overrides = {}) => ({
   sessionId: "session-1",
+  ...RUNTIME_IDENTITY,
   players: ["alice", { playerId: "bob" }],
   callbackUrl: "http://127.0.0.1:9999/events",
   reconnectPolicy: "fresh-token",
@@ -75,6 +87,7 @@ const createManager = (overrides = {}) =>
     fetchImpl: async () => ({ ok: true, status: 204 }),
     now: () => NOW_MS,
     playerDrainTimeoutMs: 20,
+    runtimeIdentity: RUNTIME_IDENTITY,
     ...overrides,
   });
 
@@ -185,9 +198,88 @@ test("enforces roster identity, one connection, replay defense, and fresh-token 
   await expect(ended.drain).resolves.toBe(true);
 });
 
+test("rejects wrong authority, map, build, and compatibility identities with stable errors", () => {
+  const cases = [
+    ["gameId", "other-game", "wrong_game", 409],
+    ["authorityId", "racing", "wrong_authority", 409],
+    ["mapId", "other-map", "wrong_map", 409],
+    ["serverBuildId", `sha256:${"b".repeat(64)}`, "wrong_server_build", 409],
+    ["compatibilityVersion", "2", "client_update_required", 426],
+    ["clientBuildId", "client-2", "client_update_required", 426],
+    ["protocolVersion", "thnk-flatbuffers-v2", "client_update_required", 426],
+  ];
+  for (const [field, value, code, status] of cases) {
+    const manager = createManager();
+    expect(() =>
+      manager.createSession(sessionInput({ [field]: value }))
+    ).toThrow(code);
+    try {
+      manager.createSession(sessionInput({ [field]: value }));
+    } catch (error) {
+      expect(error).toMatchObject({ code, status });
+    }
+    expect(manager.getPublicState()).toBeNull();
+  }
+});
+
+test("binds immutable signed matchmaking tags to the roster and admission", () => {
+  const manager = createManager();
+  manager.setGameReady();
+  manager.createSession(
+    sessionInput({
+      players: [
+        { playerId: "alice", tags: { team: "A", seed: 7, captain: true } },
+      ],
+    })
+  );
+  expect(() =>
+    manager.authorize(
+      `Bearer ${signToken({ tags: { team: "B", seed: 7, captain: true } })}`
+    )
+  ).toThrow("wrong_player_tags");
+
+  const admission = manager.authorize(
+    `Bearer ${signToken({
+      jti: "correct-tags",
+      tags: { team: "A", seed: 7, captain: true },
+    })}`
+  );
+  expect(admission.thnkIdentity.tags).toEqual({
+    team: "A",
+    seed: 7,
+    captain: true,
+  });
+  expect(Object.isFrozen(admission.thnkIdentity.tags)).toBe(true);
+});
+
+test("rejects admission tokens minted for another authority, build, or client version", () => {
+  const manager = createManager();
+  manager.setGameReady();
+  manager.createSession(sessionInput());
+  expect(() =>
+    manager.authorize(
+      `Bearer ${signToken({ authorityId: "racing", jti: "wrong-authority" })}`
+    )
+  ).toThrow("wrong_authority");
+  expect(() =>
+    manager.authorize(
+      `Bearer ${signToken({
+        serverBuildId: `sha256:${"b".repeat(64)}`,
+        jti: "wrong-build",
+      })}`
+    )
+  ).toThrow("wrong_server_build");
+  expect(() =>
+    manager.authorize(
+      `Bearer ${signToken({ compatibilityVersion: "2", jti: "wrong-version" })}`
+    )
+  ).toThrow("client_update_required");
+});
+
 test("expires abandoned admissions without allowing their token to be replayed", () => {
   let now = NOW_MS;
   const manager = createManager({ now: () => now });
+  manager.setGameReady();
   manager.createSession(sessionInput());
   const firstToken = signToken({ exp: NOW_SECONDS + 40 });
   manager.authorize(`Bearer ${firstToken}`);
@@ -218,6 +310,7 @@ test("binds voice grants to the exact gameplay admission lifecycle", () => {
     getPublicState: () => ({ enabled: true, activeGrants: 0 }),
   };
   const manager = createManager({ voiceManager });
+  manager.setGameReady();
   manager.createSession(sessionInput());
   const admission = manager.authorize(`Bearer ${signToken()}`);
 
@@ -253,6 +346,7 @@ test("voice token failure is reported without rejecting gameplay admission", () 
     getPublicState: () => ({ enabled: true, activeGrants: 0 }),
   };
   const manager = createManager({ voiceManager });
+  manager.setGameReady();
   manager.createSession(sessionInput());
   const admission = manager.authorize(`Bearer ${signToken()}`);
 

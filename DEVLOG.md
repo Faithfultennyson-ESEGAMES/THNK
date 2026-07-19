@@ -381,3 +381,87 @@ project-wide timeline and must be updated as part of every milestone commit.
   the M4 commit.
 - Before commit, 849 tracked and untracked repository files were scanned for
   the external Agora App Certificate; zero matches were found.
+
+## 2026-07-19 - M5 multi-authority and admission hardening
+
+### Authority catalog, artifact identity, and supervisor
+
+- Started `platform/m5-multi-authority` from M4 commit `0b0c6f0` and treated
+  the user-authored Matchmaking and Player Profile plans as cross-service
+  contracts; their implementations remain separate repositories.
+- Bumped the bundle format to v4. The exporter now scans all literal Geckos
+  `HostServer` actions into a deterministic authority catalog, rejects
+  duplicate/invalid IDs and mixed ports, and preserves legacy one-authority
+  projects by assigning `default` in the staged export.
+- Added compatibility, client-build, and protocol identities. The server build
+  ID is the verified bundle SHA-256 (`sha256:<contentHash>`), optionally pinned
+  from the deployment registry with `THNK_EXPECTED_SERVER_BUILD_ID`.
+- Deliberately resolved the earlier "signed manifest" ambiguity as a trusted
+  content-addressed manifest. A self-contained signature would not establish
+  trust unless its public key were anchored outside the bundle.
+- Added runtime preflight that recomputes integrity, selects one authority and
+  optional map, patches the GDevelop bootstrap scene, and exits 1 before
+  Electron initialization for an unknown authority or untrusted build.
+- Converted bridge startup into a supervisor: the control API becomes live
+  first, validates the complete session assignment, launches the hidden
+  GDevelop authority, and only then reports readiness. Wrong authority/build
+  or client compatibility never calls the start hook.
+
+### Admission identity and GDevelop tags
+
+- Extended session assignments and RS256 JWTs with game, authority, optional
+  map, server build, compatibility, client build, protocol, and flat scalar
+  tags. Added stable wrong-game/authority/map/build and
+  `client_update_required` errors.
+- Bound each signed tag map to its roster entry and froze it in canonical
+  admission identity. Added `GetPlayerTag` as a read-only server expression.
+- The first exported-runtime tag proof found that the separately bundled
+  Geckos adapter had a second private `PlayerContext` map. It now writes tags
+  through the canonical global `THNK.players` registry; tests and the fixture
+  prove the exact signed value survives connect and fresh-token reconnect.
+- Kept canonical player IDs, one-live-connection checks, single-use tokens,
+  stale-transport disconnect protection, and per-player voice capabilities
+  intact.
+
+### Fixture and regression findings
+
+- Added a generated Duel/Racing fixture and matching client export. The first
+  client attempt used the old M1 scene catalog and correctly failed to enter a
+  renamed authority; exporting both halves from the same M5 project fixed the
+  contract mismatch.
+- Added dedicated unit/contract cases for authority catalogs, runtime hash
+  verification, trusted build pinning, unknown authority, supervisor ordering,
+  wrong game/authority/map/build/version claims, signed tag mismatches, and
+  immutable tag values.
+- The legacy M2 regression found GDevelop rejects an omitted new string
+  parameter even though Core maps it to `default`; staged parameter migration
+  now keeps existing projects source-compatible.
+- Direct Ctrl+C sent through `xvfb-run` also terminated its virtual display and
+  produced an Electron wrapper shutdown fault. The real supervisor
+  `/v1/session/end` path on Ubuntu drained callbacks and shut down cleanly.
+
+### Final evidence
+
+- Frozen root install, TypeScript, 15 Jest suites/56 tests, full minified build,
+  generated extension import/export, bundle validation, and a repeated
+  content-hash export passed.
+- Final format-v4 build ID:
+  `sha256:78155313b606c8128aa2b2972d25b0547658ff6425280db4c27ac548af232029`.
+- The Windows M5 gate passed two-client authoritative state, exact signed tag
+  propagation, disconnect/reconnect identity isolation, two independent
+  authority selections, all pre-start rejection cases, webhook drain, and
+  exit code 0.
+- M3 and M4 exported-runtime gates passed again on the legacy `default`
+  authority. M4 retained isolated voice grants, refresh, reconnect capability
+  rotation, and gameplay continuity during provider outage.
+- Ubuntu 24.04.4 x86_64 with Node 18.20.8 and Xvfb loaded the verified artifact:
+  Duel reached its scene marker; Racing rejected a wrong build, accepted the
+  valid assignment, and shut down through the control API; unknown authority
+  exited 1 before control/GDevelop startup.
+- The Ubuntu host's npm registry connection timed out. Linux reused the exact
+  Electron/Geckos cache proven during M2 plus platform-independent Agora JS
+  dependencies; no credential was copied or logged.
+- Detailed contract and evidence: `docs/project/M5-MULTI-AUTHORITY.md`.
+- M6 still owns real illegal-edit detection for `trust.violation`, roster-keyed
+  pre-issued Agora grants and refresh ownership, Player Profile documents, and
+  blocked-player admission.

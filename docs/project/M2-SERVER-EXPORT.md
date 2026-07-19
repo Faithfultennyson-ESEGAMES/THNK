@@ -1,5 +1,10 @@
 # M2 Server Export Report
 
+> Contract update: M5 supersedes the single-entry format described here with
+> bundle format v4, an `authorities` catalog, and a content-addressed
+> `serverBuildId`. Legacy one-authority projects are migrated to authority ID
+> `default` during staged export. See `M5-MULTI-AUTHORITY.md`.
+
 **Recorded:** 2026-07-19
 
 **Platform branch:** `platform/m2-server-export`

@@ -148,8 +148,17 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
       const id =
         (identity as { playerId?: string } | undefined)?.playerId ||
         this.connectionIDs.createClientID();
+      THNK.players.setPlayerTags(
+        id,
+        (
+          identity as
+            | { tags?: Readonly<Record<string, string | number | boolean>> }
+            | undefined
+        )?.tags
+      );
 
       if (!this.onConnection(id)) {
+        THNK.players.clearPlayerTags(id);
         channel.close();
         return;
       }
@@ -158,6 +167,7 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
         !this.bridge?.playerConnected(identity, transportConnectionId)
       ) {
         this.onDisconnection(id);
+        THNK.players.clearPlayerTags(id);
         channel.close();
         return;
       }

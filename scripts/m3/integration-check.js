@@ -9,13 +9,24 @@ const { evaluate, sendCommand } = require("../m1/inspect-runtime");
 
 const repositoryRoot = path.resolve(__dirname, "../..");
 const m4Check = process.env.THNK_M4_CHECK === "true";
+const m5Check = process.env.THNK_M5_CHECK === "true";
 const liveAgora = process.env.THNK_M4_LIVE === "true";
-const milestone = m4Check ? "M4" : "M3";
-const bundlePath = path.join(repositoryRoot, ".generated/m2/server-bundle");
-const clientBuild = path.join(repositoryRoot, ".generated/m1/client/build");
+const milestone = m5Check ? "M5" : m4Check ? "M4" : "M3";
+const bundlePath = path.resolve(
+  process.env.THNK_TEST_BUNDLE ||
+    path.join(repositoryRoot, ".generated/m2/server-bundle")
+);
+const clientBuild = path.resolve(
+  process.env.THNK_TEST_CLIENT_BUILD ||
+    path.join(repositoryRoot, ".generated/m1/client/build")
+);
 const generatedRoot = path.join(
   repositoryRoot,
-  m4Check ? ".generated/m4" : ".generated/m3"
+  m5Check
+    ? ".generated/m5/integration-clients"
+    : m4Check
+    ? ".generated/m4"
+    : ".generated/m3"
 );
 const chromePath =
   process.env.CHROME_BIN ||
@@ -39,6 +50,23 @@ if (!fs.existsSync(path.join(clientBuild, "index.html")))
   throw new Error("Run yarn fixture:m1:export-client before the M3 check.");
 if (!fs.existsSync(chromePath))
   throw new Error(`Chrome executable not found: ${chromePath}`);
+
+const manifest = JSON.parse(
+  fs.readFileSync(path.join(bundlePath, "manifest.json"), "utf8")
+);
+const authorityId =
+  process.env.THNK_AUTHORITY_ID || Object.keys(manifest.authorities || {})[0];
+const mapId = process.env.THNK_MAP_ID || "";
+const assignmentIdentity = Object.freeze({
+  gameId: manifest.project.gameId,
+  authorityId,
+  ...(mapId ? { mapId } : {}),
+  serverBuildId: manifest.build.serverBuildId,
+  compatibilityVersion: manifest.build.compatibilityVersion,
+  clientBuildId: manifest.build.clientBuildId,
+  protocolVersion: manifest.build.protocolVersion,
+});
+const signedTags = m5Check ? { team: "signed-team" } : {};
 
 const delay = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -94,6 +122,8 @@ const signToken = ({
       jti: tokenId,
       iat: issuedAt,
       exp: expiresAt,
+      ...assignmentIdentity,
+      tags: signedTags,
     })
   ).toString("base64url");
   const message = `${header}.${claims}`;
@@ -219,6 +249,7 @@ const snapshot = (debugPort) =>
         admissionTokenCleared: !("THNK_ADMISSION_TOKEN" in window),
         connection: window.THNK?.client?.getConnectionState?.(),
         score: scene?.getVariables().get("State").getChild("Score").getAsNumber(),
+        lastTeam: scene?.getVariables().get("State").getChild("LastTeam").getAsString(),
         players: (scene?.getObjects("Player") || []).map(player => ({
           id: player.thnkID,
           x: player.getX()
@@ -329,6 +360,9 @@ Object.assign(serverEnvironment, {
   THNK_CONTROL_TOKEN: controlToken,
   THNK_WEBHOOK_SECRET: webhookSecret,
   THNK_ALLOW_INSECURE_CALLBACKS: "true",
+  THNK_AUTHORITY_ID: authorityId,
+  THNK_MAP_ID: mapId,
+  THNK_EXPECTED_SERVER_BUILD_ID: manifest.build.serverBuildId,
 });
 if (m4Check)
   Object.assign(serverEnvironment, {
@@ -368,7 +402,11 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
     method: "POST",
     body: {
       sessionId: "m3-session",
-      players: ["alice", "bob", "probe"],
+      ...assignmentIdentity,
+      players: ["alice", "bob", "probe"].map((playerId) => ({
+        playerId,
+        tags: signedTags,
+      })),
       callbackUrl: `http://127.0.0.1:${callbackPort}/events`,
       reconnectPolicy: "fresh-token",
       metadata: { fixture: "m3" },
@@ -435,6 +473,7 @@ for (const stream of [gameServer.stdout, gameServer.stderr])
           value.connection === "connected" &&
           value.score === 2 &&
           value.players.length === 2 &&
+          (!m5Check || value.lastTeam === "signed-team") &&
           value.admissionTokenCleared
       ),
     "two admitted clients to converge"

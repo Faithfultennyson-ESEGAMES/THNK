@@ -1,5 +1,7 @@
 let currentPlayerID: string = "";
 const playerObjectsLists = new Map<string, gdjs.LongLivedObjectsList>();
+type PlayerTag = string | number | boolean;
+const playerTags = new Map<string, Readonly<Record<string, PlayerTag>>>();
 
 export const getCurrentPlayerID = () => currentPlayerID;
 export const switchPlayerContext = (playerID: string) => {
@@ -7,11 +9,23 @@ export const switchPlayerContext = (playerID: string) => {
 };
 export const releasePlayerContext = (playerID: string) => {
   playerObjectsLists.delete(playerID);
+  playerTags.delete(playerID);
   if (currentPlayerID === playerID) currentPlayerID = "";
 };
 export const resetPlayerContexts = () => {
   currentPlayerID = "";
   playerObjectsLists.clear();
+  playerTags.clear();
+};
+export const setPlayerTags = (
+  playerID: string,
+  tags: Readonly<Record<string, PlayerTag>> = {}
+) => playerTags.set(playerID, Object.freeze({ ...tags }));
+export const clearPlayerTags = (playerID: string) =>
+  playerTags.delete(playerID);
+export const getCurrentPlayerTag = (name: string): string => {
+  const value = playerTags.get(currentPlayerID)?.[name];
+  return value === undefined ? "" : String(value);
 };
 export const markObjectAsOwned = (object: gdjs.RuntimeObject) => {
   let lists = playerObjectsLists.get(currentPlayerID);

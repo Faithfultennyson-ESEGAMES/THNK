@@ -3,6 +3,7 @@ const os = require("os");
 const path = require("path");
 const {
   FORMAT_VERSION,
+  findServerAuthorities,
   findServerEntry,
   hashBundleContent,
   normalizeGeneratedIdentifiers,
@@ -54,7 +55,9 @@ test("passes the Geckos bridge path into the generated runtime", () => {
   ).toContain("process.env.THNK_GECKOS_BRIDGE_PATH");
   expect(
     fs.readFileSync(path.join(serverDirectory, "index.html"), "utf8")
-  ).toContain("gdjs.RuntimeGame(gdjs.projectData, gdjs.runtimeGameOptions)");
+  ).toContain(
+    "const game = ((gdjs.projectData.firstLayout = gdjs.runtimeGameOptions.thnkAuthorityBootstrapScene"
+  );
 });
 
 test("finds one literal Geckos server entry", () => {
@@ -84,20 +87,49 @@ test("finds one literal Geckos server entry", () => {
   });
 });
 
-test("rejects ambiguous server entries", () => {
-  const hostAction = {
+test("rejects the legacy single-entry helper for a multi-authority project", () => {
+  const hostAction = (authorityId) => ({
     type: { value: "THNK_GeckosServer::HostServer" },
-    parameters: ["", "9208", '"Authority"'],
-  };
+    parameters: ["", "9208", '"Authority"', `"${authorityId}"`],
+  });
   expect(() =>
     findServerEntry({
       layouts: [
-        { name: "One", events: [{ actions: [hostAction] }] },
-        { name: "Two", events: [{ actions: [hostAction] }] },
+        { name: "One", events: [{ actions: [hostAction("one")] }] },
+        { name: "Two", events: [{ actions: [hostAction("two")] }] },
         { name: "Authority", events: [] },
       ],
     })
   ).toThrow("exactly one");
+});
+
+test("catalogs multiple named authorities deterministically", () => {
+  const host = (scene, authorityId) => ({
+    type: { value: "THNK_GeckosServer::HostServer" },
+    parameters: ["", "9208", `"${scene}"`, `"${authorityId}"`],
+  });
+  expect(
+    findServerAuthorities({
+      layouts: [
+        {
+          name: "RacingBootstrap",
+          events: [{ actions: [host("Racing", "racing")] }],
+        },
+        {
+          name: "DuelBootstrap",
+          events: [{ actions: [host("Duel", "duel")] }],
+        },
+        { name: "Duel", events: [] },
+        { name: "Racing", events: [] },
+      ],
+    })
+  ).toEqual({
+    authorities: {
+      duel: { bootstrapScene: "DuelBootstrap", gameScene: "Duel" },
+      racing: { bootstrapScene: "RacingBootstrap", gameScene: "Racing" },
+    },
+    port: 9208,
+  });
 });
 
 test("validates the bundle hash and detects tampering", () => {
@@ -110,6 +142,7 @@ test("validates the bundle hash and detects tampering", () => {
     "// bridge\n"
   );
   for (const runtimeFile of [
+    "bundle-identity.cjs",
     "control-server.cjs",
     "jwt-verifier.cjs",
     "session-manager.cjs",
@@ -135,7 +168,21 @@ test("validates the bundle hash and detects tampering", () => {
   const manifest = {
     formatVersion: FORMAT_VERSION,
     transport: "geckos",
-    entry: { port: 9208 },
+    project: {
+      name: "Fixture",
+      uuid: "game-1",
+      gameId: "game-1",
+      version: "1.0.0",
+    },
+    authorities: {
+      duel: { bootstrapScene: "Bootstrap", gameScene: "Authority" },
+    },
+    build: {
+      serverBuildId: "",
+      compatibilityVersion: "1",
+      clientBuildId: "client-1",
+      protocolVersion: "thnk-flatbuffers-v1",
+    },
     runtime: {
       kind: "hidden-electron",
       entryPoint: "runtime/main.cjs",
@@ -163,6 +210,7 @@ test("validates the bundle hash and detects tampering", () => {
     `${JSON.stringify(manifest)}\n`
   );
   manifest.contentHash.value = hashBundleContent(bundle);
+  manifest.build.serverBuildId = `sha256:${manifest.contentHash.value}`;
   fs.writeFileSync(
     path.join(bundle, "manifest.json"),
     `${JSON.stringify(manifest)}\n`

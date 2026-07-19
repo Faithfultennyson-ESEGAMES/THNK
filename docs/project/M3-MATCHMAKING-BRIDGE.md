@@ -1,5 +1,10 @@
 # M3 External Matchmaking Bridge Report
 
+> Contract update: M5 extends every session assignment and admission JWT with
+> game, authority, optional map, server build, client build, compatibility,
+> protocol, and signed player-tag identity. It also starts the control
+> supervisor before GDevelop. See `M5-MULTI-AUTHORITY.md`.
+
 **Recorded:** 2026-07-19
 
 **Platform branch:** `platform/m3-matchmaking-bridge`
