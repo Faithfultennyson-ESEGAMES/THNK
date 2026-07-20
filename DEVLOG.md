@@ -624,3 +624,24 @@ voice`).
 - The real-service M7 acceptance gate will be revisited after Matchmaking and
   Player Profile have executable integration milestones; the in-Core stub is
   still intentionally not treated as either production companion service.
+
+## 2026-07-20 - External Matchmaking M1-M2 integration update
+
+- The separately published `THNK-Matchmaking` service now has executable M1
+  public-queue and M2 private-lobby handoff paths. Both use Core's exact M7
+  control, admission, and signed lifecycle contracts; no alternate game-session
+  protocol was introduced.
+- On Ubuntu 24.04.4 x86-64, Matchmaking M1 handed a real two-player public match
+  to exact Core build
+  `sha256:808e515304088c927c10376d8cccccbbe4a86cdd2edca6d44708eac6cd2b8d6a`.
+  Alice and Bob's distinct Matchmaking-issued tokens were accepted by the real
+  Geckos endpoint and Core's signed end callback cleaned Matchmaking state.
+- Matchmaking M2 commit `9aa67f0` then created a real four-player private lobby,
+  auto-started it after all members became ready, and handed the exact roster to
+  the same Core build. All four distinct admissions were accepted; signed end
+  lifecycle removed the linked lobby/session state; captured logs contained no
+  tested control secret, webhook secret, or admission token.
+- These gates close the previously pending external Matchmaking-to-Core portion
+  of M7 verification. The separately deployed Player Profile production-service
+  gate remains pending; M2 friendship checks used an independently authenticated
+  contract stub and are not represented as a completed Player Profile service.
