@@ -69,9 +69,7 @@ namespace THNK {
     protected doSendMessageTo(userID: string, message: Uint8Array): void {
       bc.postMessage({
         message: "msg-for-client",
-        data: message.buffer.slice(
-          message.buffer.byteLength - message.byteLength
-        ),
+        data: message,
         for: userID,
       } as MessageTypes);
     }

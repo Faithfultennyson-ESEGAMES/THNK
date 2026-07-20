@@ -45,7 +45,7 @@ const loadBundleIdentity = ({
   const manifest = JSON.parse(
     fs.readFileSync(path.join(bundleRoot, "manifest.json"), "utf8")
   );
-  if (manifest.formatVersion !== 4)
+  if (manifest.formatVersion !== 5)
     throw new Error(`Unsupported bundle format: ${manifest.formatVersion}.`);
 
   const actualHash = hashBundleContent(bundleRoot);

@@ -3,12 +3,12 @@ const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const FORMAT_VERSION = 4;
-const ELECTRON_VERSION = "32.3.3";
-const ELECTRON_REMOTE_VERSION = "2.1.2";
+const FORMAT_VERSION = 5;
+const ELECTRON_VERSION = "43.1.1";
+const ELECTRON_REMOTE_VERSION = "2.1.3";
 const GECKOS_VERSION = "3.1.0";
 const AGORA_TOKEN_VERSION = "2.0.5";
-const NODE_VERSION_RANGE = "18.20.x";
+const NODE_VERSION_RANGE = "24.18.x";
 const PROTOCOL_VERSION = "thnk-flatbuffers-v1";
 const repositoryRoot = path.resolve(__dirname, "../..");
 const runtimeTemplate = path.join(__dirname, "runtime");
@@ -279,6 +279,7 @@ const writeBundleFiles = (bundlePath, project, catalog, compatibility) => {
     path.join(bundlePath, "package.json"),
     `${JSON.stringify(packageData, null, 2)}\n`
   );
+  fs.writeFileSync(path.join(bundlePath, ".dockerignore"), "node_modules\n");
   fs.copyFileSync(
     path.join(repositoryRoot, "yarn.lock"),
     path.join(bundlePath, "yarn.lock")
@@ -286,12 +287,18 @@ const writeBundleFiles = (bundlePath, project, catalog, compatibility) => {
   fs.writeFileSync(
     path.join(bundlePath, "config.example.env"),
     `THNK_SERVER_START_TIMEOUT_MS=30000\n` +
+      `THNK_SHUTDOWN_TIMEOUT_MS=30000\n` +
+      `THNK_MAX_SESSION_DURATION_MS=14400000\n` +
+      `THNK_LOG_LEVEL=info\n` +
       `THNK_AUTHORITY_ID=\n` +
       `THNK_MAP_ID=\n` +
       `THNK_BRIDGE_ENABLED=false\n` +
       `THNK_CONTROL_HOST=127.0.0.1\n` +
       `THNK_CONTROL_PORT=${getDefaultControlPort(catalog.port)}\n` +
       `THNK_CONTROL_TOKEN=\n` +
+      `THNK_CONTROL_RATE_LIMIT_PER_MINUTE=120\n` +
+      `THNK_CONTROL_REQUEST_TIMEOUT_MS=10000\n` +
+      `THNK_CONTROL_BODY_TIMEOUT_MS=5000\n` +
       `THNK_WEBHOOK_SECRET=\n` +
       `THNK_ALLOW_INSECURE_CALLBACKS=false\n` +
       `THNK_PLAYER_PROFILE_URL=\n` +
@@ -305,7 +312,8 @@ const writeBundleFiles = (bundlePath, project, catalog, compatibility) => {
       `THNK_ALLOW_INSECURE_VOICE_TOKEN_URL=false\n` +
       `THNK_VOICE_TOKEN_TTL_SECONDS=600\n` +
       `THNK_VOICE_MIN_REFRESH_INTERVAL_MS=5000\n` +
-      `THNK_VOICE_MAX_REFRESHES_PER_MINUTE=8\n`
+      `THNK_VOICE_MAX_REFRESHES_PER_MINUTE=8\n` +
+      `THNK_VOICE_HTTP_RATE_LIMIT_PER_MINUTE=60\n`
   );
   fs.writeFileSync(
     path.join(bundlePath, "README.md"),
@@ -318,16 +326,18 @@ const writeBundleFiles = (bundlePath, project, catalog, compatibility) => {
         .join(", ")}.\n\n` +
       `Compatibility version: \`${compatibility.compatibilityVersion}\`; client build: \`${compatibility.clientBuildId}\`; protocol: \`${compatibility.protocolVersion}\`.\n\n` +
       `Use Node ${NODE_VERSION_RANGE} and Yarn 1.22.x.\n\n` +
-      "```text\ncorepack yarn install --frozen-lockfile --production=true\nyarn start\n```\n\n" +
+      "```text\ncorepack yarn install --frozen-lockfile --production=true\nnode node_modules/electron/install.js\nyarn start\n```\n\n" +
       "On a displayless Ubuntu 24.04 host, install Electron's runtime libraries and Xvfb, configure Electron's sandbox, then launch inside the virtual display:\n\n" +
       "```text\nsudo apt-get update\nsudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libx11-xcb1 libdrm2 libxkbcommon0 libatk-bridge2.0-0 libcups2 libatspi2.0-0 fonts-liberation\nsudo chown root:root node_modules/electron/dist/chrome-sandbox\nsudo chmod 4755 node_modules/electron/dist/chrome-sandbox\nxvfb-run -a --server-args='-screen 0 1024x768x24' yarn start\n```\n\n" +
       `The authoritative Geckos server listens on port ${catalog.port}. ` +
-      "The Electron window is created hidden; stop with SIGINT or SIGTERM.\n\n" +
+      "The Electron window is created hidden; stop with SIGINT or SIGTERM. Shutdown drains the active session and has a configurable 30-second safety deadline.\n\n" +
       "## Matchmaking bridge\n\n" +
       "The bridge is disabled by default, preserving direct THNK connections. To enable it, copy the values from `config.example.env` into the server environment, set `THNK_BRIDGE_ENABLED=true`, and provide independently generated random values of at least 32 characters for `THNK_CONTROL_TOKEN` and `THNK_WEBHOOK_SECRET`. Never place either secret in a game client.\n\n" +
+      "Runtime logs are newline-delimited JSON. Keep `THNK_LOG_LEVEL=info` in production and correlate lifecycle records with `sessionId`, `playerId`, `connectionId`, and `eventId`; authorization material, tokens, capabilities, documents, and certificate fields are redacted.\n\n" +
       `The v1 control API defaults to \`127.0.0.1:${getDefaultControlPort(
         catalog.port
       )}\`. Bind its control routes only to a private or otherwise protected interface. Player admission JWTs are sent to Geckos in the HTTP \`Authorization\` header, never in a URL. Plain HTTP callback URLs are accepted only for loopback development when \`THNK_ALLOW_INSECURE_CALLBACKS=true\`.\n\n` +
+      "`GET /health/live` reports process liveness. `GET /health/ready` reports authority, session, Player Profile, and webhook checks; a configured failed Player Profile dependency makes the process unready. Control, health, and public voice routes have source-address rate limits. Session duration defaults to four hours, after which the process drains and exits.\n\n" +
       "## Player Profile hooks\n\n" +
       "Set `THNK_PLAYER_PROFILE_URL` and the independent service credential `THNK_PLAYER_PROFILE_TOKEN` together to enable blocked-player preflight and persistent player documents. The URL must use HTTPS outside explicitly enabled loopback development. The Bridge never accepts this URL or credential from a session request.\n\n" +
       "## Agora session voice\n\n" +
@@ -448,6 +458,8 @@ const exportServer = ({
         defaultPort: getDefaultControlPort(catalog.port),
         admissionTransport: "authorization-header",
         enabledByEnvironment: "THNK_BRIDGE_ENABLED",
+        healthEndpoints: ["/health/live", "/health/ready"],
+        logFormat: "ndjson-v1",
       },
       voice: {
         provider: "agora",
@@ -530,6 +542,10 @@ const validateBundle = (bundlePath) => {
     manifest.control?.apiVersion !== "v1" ||
     manifest.control?.admissionTransport !== "authorization-header" ||
     manifest.control?.enabledByEnvironment !== "THNK_BRIDGE_ENABLED" ||
+    manifest.control?.logFormat !== "ndjson-v1" ||
+    !Array.isArray(manifest.control?.healthEndpoints) ||
+    !manifest.control.healthEndpoints.includes("/health/live") ||
+    !manifest.control.healthEndpoints.includes("/health/ready") ||
     !Number.isInteger(manifest.control?.defaultPort) ||
     manifest.control.defaultPort < 1 ||
     manifest.control.defaultPort > 65_535 ||
@@ -550,9 +566,12 @@ const validateBundle = (bundlePath) => {
     "runtime/geckos-bridge.cjs",
     "runtime/jwt-verifier.cjs",
     "runtime/player-profile-client.cjs",
+    "runtime/rate-limiter.cjs",
     "runtime/session-manager.cjs",
+    "runtime/structured-logger.cjs",
     "runtime/voice-token-manager.cjs",
     "runtime/webhook-outbox.cjs",
+    ".dockerignore",
     "package.json",
     "yarn.lock",
   ]) {

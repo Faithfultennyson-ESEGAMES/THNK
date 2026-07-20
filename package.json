@@ -8,7 +8,7 @@
   },
   "packageManager": "yarn@1.22.22",
   "engines": {
-    "node": "18.20.x",
+    "node": "24.18.x",
     "yarn": "1.22.x"
   },
   "workspaces": [
@@ -41,6 +41,15 @@
     "fixture:m6:export": "node ./scripts/m6/export-fixture.js",
     "fixture:m6:validate": "node ./bin/thnk.js server validate --bundle ./.generated/m6/server-bundle",
     "fixture:m6:check": "node ./scripts/m6/integration-check.js",
+    "fixture:m7:prepare": "node ./scripts/m7/prepare-fixture.js",
+    "fixture:m7:export-client": "node ./scripts/m7/export-client.js",
+    "fixture:m7:export": "node ./scripts/m7/export-fixture.js",
+    "fixture:m7:validate": "node ./bin/thnk.js server validate --bundle ./.generated/m7/server-bundle",
+    "fixture:m7:check": "node ./scripts/m7/integration-check.js",
+    "ci:secret-scan": "node ./scripts/m7/secret-scan.js",
+    "ci:production-audit": "node ./scripts/m7/production-audit.js",
+    "ci:headless-smoke": "node ./scripts/m7/headless-smoke.js",
+    "ci:stub-smoke": "node ./scripts/m7/stub-smoke.js",
     "thnk": "node ./bin/thnk.js",
     "build:thnk": "tsup ./code/index.ts --format esm --platform=browser --treeshake smallest --minify && tsup ./dist/index.mjs --format iife --platform=browser --global-name THNK --minify && node -e \"fs.promises.rm('./dist/index.mjs', {force:true})\"",
     "build:thnk:dev": "tsup ./code/index.ts --format iife --platform=browser --global-name THNK",
@@ -51,27 +60,39 @@
     "build": "yarn build:clean && yarn generate-protocol && yarn build:thnk && yarn build:adapters && yarn build:extensions"
   },
   "devDependencies": {
-    "@electron/remote": "2.1.2",
+    "@types/follow-redirects": "^1.14.1",
+    "@types/jest": "30.0.0",
+    "@types/node": "^24.0.0",
+    "@types/pako": "^2.0.0",
+    "flatbuffers": "^2.0.6",
+    "jest": "30.4.2",
+    "prettier": "^2.7.1",
+    "ts-jest": "29.4.11",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "ws": "8.21.1"
+  },
+  "dependencies": {
+    "@electron/remote": "2.1.3",
     "@geckos.io/client": "3.1.0",
     "@geckos.io/server": "3.1.0",
-    "@types/follow-redirects": "^1.14.1",
-    "@types/jest": "^29.0.3",
-    "@types/node": "^18.7.18",
-    "@types/pako": "^2.0.0",
     "agora-rtc-sdk-ng": "4.24.6",
     "agora-token": "2.0.5",
-    "all-contributors-cli": "^6.24.0",
-    "electron": "32.3.3",
-    "flatbuffers": "^2.0.6",
-    "follow-redirects": "^1.15.2",
-    "jest": "^29.0.3",
-    "msgpackr": "^1.6.1",
+    "electron": "43.1.1",
+    "follow-redirects": "^1.16.0",
+    "msgpackr": "^2.0.4",
     "node-stream-zip": "^1.15.0",
-    "pako": "^2.0.4",
-    "prettier": "^2.7.1",
-    "ts-jest": "^29.0.1",
-    "tsup": "^6.2.3",
-    "typescript": "^4.9.4",
-    "ws": "8.21.0"
+    "pako": "^3.0.1"
+  },
+  "resolutions": {
+    "**/@istanbuljs/load-nyc-config/js-yaml": "3.15.0",
+    "**/anymatch/picomatch": "2.3.2",
+    "**/execa/cross-spawn": "7.0.6",
+    "**/make-dir/semver": "6.3.1",
+    "**/node-abi/semver": "7.8.5",
+    "**/prebuild-install/tar-fs": "2.1.5",
+    "**/test-exclude/minimatch": "3.1.4",
+    "**/test-exclude/**/brace-expansion": "1.1.13",
+    "**/test-exclude/**/minimatch": "3.1.4"
   }
 }

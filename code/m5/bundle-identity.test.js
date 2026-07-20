@@ -21,7 +21,7 @@ const makeBundle = () => {
   fs.mkdirSync(path.join(bundleRoot, "server"));
   fs.writeFileSync(path.join(bundleRoot, "server", "index.html"), "fixture\n");
   const manifest = {
-    formatVersion: 4,
+    formatVersion: 5,
     project: { gameId: "game-1" },
     authorities: {
       duel: { bootstrapScene: "DuelBootstrap", gameScene: "Duel" },

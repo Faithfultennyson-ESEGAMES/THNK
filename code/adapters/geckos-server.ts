@@ -281,12 +281,7 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
   protected doSendMessageTo(userID: string, message: Uint8Array): void {
     const connection = this.channels.get(userID);
     if (connection) {
-      connection.raw.emit(
-        message.buffer.slice(
-          message.byteOffset,
-          message.byteOffset + message.byteLength
-        )
-      );
+      connection.raw.emit(message);
     }
   }
 

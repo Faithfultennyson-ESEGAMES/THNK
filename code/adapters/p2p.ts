@@ -69,9 +69,7 @@ namespace THNK {
           "Tried to send a message on an unestablished connection!"
         );
       }
-      this.connection.send(
-        message.buffer.slice(message.buffer.byteLength - message.byteLength)
-      );
+      this.connection.send(Uint8Array.from(message).buffer);
     }
   }
 
@@ -108,9 +106,7 @@ namespace THNK {
     protected doSendMessageTo(userID: string, message: Uint8Array): void {
       const connection = gdjs.evtTools.p2p.getConnectionInstance(userID);
       if (connection) {
-        connection.send(
-          message.buffer.slice(message.buffer.byteLength - message.byteLength)
-        );
+        connection.send(Uint8Array.from(message).buffer);
       }
     }
 

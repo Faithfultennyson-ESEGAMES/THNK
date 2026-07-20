@@ -3,6 +3,7 @@ const path = require("path");
 const { app, BrowserWindow } = require("electron");
 const remoteMain = require("@electron/remote/main");
 const { loadBundleIdentity } = require("./bundle-identity.cjs");
+const { structuredLogger } = require("./structured-logger.cjs");
 
 const bundleRoot = path.resolve(__dirname, "..");
 let identity;
@@ -14,7 +15,9 @@ try {
     expectedServerBuildId: process.env.THNK_EXPECTED_SERVER_BUILD_ID,
   });
 } catch (error) {
-  console.error(`THNK_SERVER_PREFLIGHT_FAILED ${error.message}`);
+  structuredLogger.error("server.preflight_failed", {
+    errorMessage: error.message,
+  });
   process.exit(1);
 }
 
@@ -41,7 +44,16 @@ const controlPort = Number(
 );
 const controlHost = process.env.THNK_CONTROL_HOST || "127.0.0.1";
 const controlToken = process.env.THNK_CONTROL_TOKEN;
+const shutdownTimeout = Number(process.env.THNK_SHUTDOWN_TIMEOUT_MS || 30_000);
 
+if (
+  !Number.isInteger(shutdownTimeout) ||
+  shutdownTimeout < 5_000 ||
+  shutdownTimeout > 60_000
+)
+  throw new Error(
+    "THNK_SHUTDOWN_TIMEOUT_MS must be an integer from 5000 to 60000."
+  );
 if (
   !Number.isInteger(startupTimeout) ||
   startupTimeout < 1_000 ||
@@ -71,6 +83,7 @@ let serverWindow;
 let serverStartPromise;
 let controlServer;
 let shuttingDown = false;
+let shutdownPromise;
 
 const waitForPort = () =>
   new Promise((resolve, reject) => {
@@ -94,16 +107,35 @@ const waitForPort = () =>
     attempt();
   });
 
-const shutdown = () => {
-  if (shuttingDown) return;
+const shutdown = (reason = "process_shutdown") => {
+  if (shutdownPromise) return shutdownPromise;
   shuttingDown = true;
-  console.log("THNK_SERVER_STOPPING");
-  const forceExit = setTimeout(() => app.exit(1), 5_000);
+  structuredLogger.info("server.stopping", {
+    sessionId: sessionManager.getPublicState()?.sessionId,
+    reason,
+  });
+  const forceExit = setTimeout(() => {
+    structuredLogger.error("server.shutdown_timeout", {
+      sessionId: sessionManager.getPublicState()?.sessionId,
+      reason,
+      shutdownTimeout,
+    });
+    app.exit(1);
+  }, shutdownTimeout);
   forceExit.unref();
   app.once("will-quit", () => clearTimeout(forceExit));
   controlServer?.close();
-  if (serverWindow && !serverWindow.isDestroyed()) serverWindow.close();
-  else app.quit();
+  shutdownPromise = Promise.resolve(sessionManager.shutdown(reason))
+    .catch((error) =>
+      structuredLogger.error("server.shutdown_drain_failed", {
+        errorMessage: error?.message,
+      })
+    )
+    .finally(() => {
+      if (serverWindow && !serverWindow.isDestroyed()) serverWindow.close();
+      else app.quit();
+    });
+  return shutdownPromise;
 };
 
 const startAuthority = () => {
@@ -123,18 +155,23 @@ const startAuthority = () => {
     });
     remoteMain.enable(serverWindow.webContents);
     serverWindow.webContents.on("console-message", (_event, level, message) => {
-      const method = level >= 2 ? "error" : level === 1 ? "warn" : "log";
-      console[method](`[game] ${message}`);
+      const method = level >= 2 ? "error" : level === 1 ? "warn" : "info";
+      structuredLogger[method]("game.console", { message });
     });
     serverWindow.webContents.on(
       "did-fail-load",
       (_event, code, description) => {
-        console.error(`THNK_SERVER_LOAD_FAILED ${code} ${description}`);
+        structuredLogger.error("server.load_failed", {
+          errorCode: code,
+          errorMessage: description,
+        });
         app.exit(1);
       }
     );
     serverWindow.webContents.on("render-process-gone", (_event, details) => {
-      console.error(`THNK_SERVER_RENDERER_EXITED ${details.reason}`);
+      structuredLogger.error("server.renderer_exited", {
+        reason: details.reason,
+      });
       app.exit(1);
     });
     serverWindow.on("closed", () => {
@@ -145,14 +182,19 @@ const startAuthority = () => {
     await serverWindow.loadFile(path.join(bundleRoot, "server", "index.html"));
     await waitForPort();
     sessionManager.setGameReady();
-    console.log(
-      `THNK_SERVER_READY port=${serverPort} authority=${identity.authorityId} build=${identity.serverBuildId}`
-    );
+    structuredLogger.info("server.ready", {
+      port: serverPort,
+      authorityId: identity.authorityId,
+      serverBuildId: identity.serverBuildId,
+    });
   })();
   return serverStartPromise;
 };
 
-for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, shutdown);
+for (const signal of ["SIGINT", "SIGTERM"])
+  process.on(signal, () => shutdown(`signal_${signal.toLowerCase()}`));
+
+sessionManager.on("maximum-duration", () => shutdown("maximum_duration"));
 
 app
   .whenReady()
@@ -162,7 +204,7 @@ app
         sessionManager,
         controlToken,
         onSessionStart: startAuthority,
-        onSessionEnd: (drain) => drain.finally(shutdown),
+        onSessionEnd: (drain) => drain.finally(() => shutdown("session_ended")),
       });
       await new Promise((resolve, reject) => {
         controlServer.once("error", reject);
@@ -171,13 +213,17 @@ app
           resolve();
         });
       });
-      console.log(
-        `THNK_CONTROL_READY host=${controlHost} port=${controlPort} authority=${identity.authorityId}`
-      );
+      structuredLogger.info("control.ready", {
+        host: controlHost,
+        port: controlPort,
+        authorityId: identity.authorityId,
+      });
     } else await startAuthority();
   })
   .catch((error) => {
-    console.error(`THNK_SERVER_START_FAILED ${error.message}`);
+    structuredLogger.error("server.start_failed", {
+      errorMessage: error.message,
+    });
     app.exit(1);
   });
 

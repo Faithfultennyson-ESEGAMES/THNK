@@ -146,23 +146,26 @@ test("validates the bundle hash and detects tampering", () => {
     "control-server.cjs",
     "jwt-verifier.cjs",
     "player-profile-client.cjs",
+    "rate-limiter.cjs",
     "session-manager.cjs",
+    "structured-logger.cjs",
     "voice-token-manager.cjs",
     "webhook-outbox.cjs",
   ])
     fs.writeFileSync(path.join(bundle, "runtime", runtimeFile), "// runtime\n");
   fs.writeFileSync(path.join(bundle, "server/index.html"), "server\n");
+  fs.writeFileSync(path.join(bundle, ".dockerignore"), "node_modules\n");
   fs.writeFileSync(path.join(bundle, "yarn.lock"), "# lock\n");
   fs.writeFileSync(
     path.join(bundle, "package.json"),
     `${JSON.stringify({
       main: "runtime/main.cjs",
-      engines: { node: "18.20.x" },
+      engines: { node: "24.18.x" },
       dependencies: {
-        "@electron/remote": "2.1.2",
+        "@electron/remote": "2.1.3",
         "@geckos.io/server": "3.1.0",
         "agora-token": "2.0.5",
-        electron: "32.3.3",
+        electron: "43.1.1",
       },
     })}\n`
   );
@@ -189,8 +192,8 @@ test("validates the bundle hash and detects tampering", () => {
       entryPoint: "runtime/main.cjs",
       serverDirectory: "server",
       port: 9208,
-      electronVersion: "32.3.3",
-      nodeVersion: "18.20.x",
+      electronVersion: "43.1.1",
+      nodeVersion: "24.18.x",
     },
     control: {
       apiVersion: "v1",
@@ -198,6 +201,8 @@ test("validates the bundle hash and detects tampering", () => {
       defaultPort: 9209,
       admissionTransport: "authorization-header",
       enabledByEnvironment: "THNK_BRIDGE_ENABLED",
+      healthEndpoints: ["/health/live", "/health/ready"],
+      logFormat: "ndjson-v1",
     },
     voice: {
       provider: "agora",

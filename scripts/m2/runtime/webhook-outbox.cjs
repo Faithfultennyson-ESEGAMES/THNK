@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { structuredLogger } = require("./structured-logger.cjs");
 
 const delay = (milliseconds) =>
   new Promise((resolve) => {
@@ -18,6 +19,7 @@ class WebhookOutbox {
     initialDelayMs = 200,
     maxDelayMs = 5_000,
     requestTimeoutMs = 3_000,
+    logger = structuredLogger,
   }) {
     if (typeof fetchImpl !== "function")
       throw new Error("A fetch implementation is required for webhooks.");
@@ -31,6 +33,7 @@ class WebhookOutbox {
     this.initialDelayMs = initialDelayMs;
     this.maxDelayMs = maxDelayMs;
     this.requestTimeoutMs = requestTimeoutMs;
+    this.logger = logger;
     this.records = new Map();
     this.deliveries = new Set();
   }
@@ -51,6 +54,13 @@ class WebhookOutbox {
       lastError: undefined,
     };
     this.records.set(event.eventId, record);
+    this.logger.info("webhook.queued", {
+      eventId: event.eventId,
+      lifecycleEvent: event.eventType,
+      sessionId: event.sessionId,
+      playerId: event.playerId,
+      connectionId: event.connectionId,
+    });
     const delivery = this.deliver(record).finally(() =>
       this.deliveries.delete(delivery)
     );
@@ -88,6 +98,14 @@ class WebhookOutbox {
         if (response.ok) {
           record.delivered = true;
           record.lastError = undefined;
+          this.logger.info("webhook.delivered", {
+            eventId: record.event.eventId,
+            lifecycleEvent: record.event.eventType,
+            sessionId: record.event.sessionId,
+            playerId: record.event.playerId,
+            connectionId: record.event.connectionId,
+            attempt,
+          });
           return true;
         }
         record.lastError = `http_${response.status}`;
@@ -97,6 +115,16 @@ class WebhookOutbox {
         clearTimeout(timeout);
       }
 
+      this.logger.warn("webhook.delivery_failed", {
+        eventId: record.event.eventId,
+        lifecycleEvent: record.event.eventType,
+        sessionId: record.event.sessionId,
+        playerId: record.event.playerId,
+        connectionId: record.event.connectionId,
+        attempt,
+        errorCode: record.lastError,
+      });
+
       if (attempt < this.maxAttempts) {
         const backoff = Math.min(
           this.initialDelayMs * 2 ** (attempt - 1),
@@ -105,6 +133,15 @@ class WebhookOutbox {
         await this.sleep(backoff);
       }
     }
+    this.logger.error("webhook.exhausted", {
+      eventId: record.event.eventId,
+      lifecycleEvent: record.event.eventType,
+      sessionId: record.event.sessionId,
+      playerId: record.event.playerId,
+      connectionId: record.event.connectionId,
+      attempts: record.attempts,
+      errorCode: record.lastError,
+    });
     return false;
   }
 

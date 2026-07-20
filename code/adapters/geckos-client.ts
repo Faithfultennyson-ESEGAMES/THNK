@@ -76,12 +76,7 @@ THNK.GeckosClientAdapter = class GeckosClientAdapter extends (
         "Tried to send a message on an unestablished connection!"
       );
     }
-    this.connection.raw.emit(
-      message.buffer.slice(
-        message.byteOffset,
-        message.byteOffset + message.byteLength
-      )
-    );
+    this.connection.raw.emit(message);
   }
 
   getServerIP() {

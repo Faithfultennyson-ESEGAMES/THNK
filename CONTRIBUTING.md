@@ -58,7 +58,7 @@ The GDevelop extensions are contained in `extensions`. You can install the lates
 
 You will need the following tools to build THNK:
 
-- Node.js 18.20.x (18.20.8 is pinned in `.nvmrc` and `.node-version`)
+- Node.js 24.18.x (24.18.0 is pinned in `.nvmrc` and `.node-version`)
 - Yarn 1.22.x (1.22.22 is pinned in `package.json`)
 - A system that can run FlatBuffer's `flatc`
 

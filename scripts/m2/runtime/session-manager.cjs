@@ -13,6 +13,7 @@ const {
   validateExternalGrant,
 } = require("./voice-token-manager.cjs");
 const { PlayerProfileClient } = require("./player-profile-client.cjs");
+const { structuredLogger } = require("./structured-logger.cjs");
 
 class BridgeError extends Error {
   constructor(code, status = 400) {
@@ -51,6 +52,8 @@ class SessionManager extends EventEmitter {
     voiceManager = new VoiceTokenManager(),
     profileClient = new PlayerProfileClient(),
     runtimeIdentity = {},
+    maxSessionDurationMs = 4 * 60 * 60 * 1_000,
+    logger = structuredLogger,
   } = {}) {
     super();
     this.enabled = enabled;
@@ -64,6 +67,16 @@ class SessionManager extends EventEmitter {
     this.voiceManager = voiceManager;
     this.profileClient = profileClient;
     this.runtimeIdentity = Object.freeze({ ...runtimeIdentity });
+    this.maxSessionDurationMs = Number(maxSessionDurationMs);
+    if (
+      !Number.isInteger(this.maxSessionDurationMs) ||
+      this.maxSessionDurationMs < 1_000 ||
+      this.maxSessionDurationMs > 24 * 60 * 60 * 1_000
+    )
+      throw new Error(
+        "THNK_MAX_SESSION_DURATION_MS must be an integer from 1000 to 86400000."
+      );
+    this.logger = logger;
     this.gameReady = false;
     this.session = undefined;
     this.verifier = undefined;
@@ -77,10 +90,19 @@ class SessionManager extends EventEmitter {
     this.profileWriteTails = new Map();
     this.recentViolations = new Map();
     this.sessionCreationPending = false;
+    this.maximumDurationTimer = undefined;
+    this.sessionDrain = undefined;
+    this.dependencyState = {
+      playerProfile: this.profileClient.enabled ? "unknown" : "disabled",
+    };
   }
 
   setGameReady(value = true) {
     this.gameReady = value;
+    this.logger.info("authority.readiness_changed", {
+      sessionId: this.session?.sessionId,
+      ready: value,
+    });
     if (value && this.session?.status === "starting") {
       this.session.status = "active";
       this.outbox.enqueue("session.started", this.session.sessionId, {
@@ -95,8 +117,28 @@ class SessionManager extends EventEmitter {
 
   isReady() {
     return (
-      this.gameReady && (!this.enabled || this.session?.status === "active")
+      this.gameReady &&
+      (!this.enabled || this.session?.status === "active") &&
+      this.dependencyState.playerProfile !== "unavailable"
     );
+  }
+
+  getHealthState() {
+    const webhook = this.outbox?.stats();
+    return {
+      ready: this.isReady(),
+      checks: {
+        authority: this.gameReady ? "ready" : "not_ready",
+        session: this.enabled ? this.session?.status || "absent" : "direct",
+        playerProfile: this.dependencyState.playerProfile,
+        webhook:
+          webhook?.failed > 0
+            ? "degraded"
+            : webhook?.pending > 0
+            ? "pending"
+            : "available",
+      },
+    };
   }
 
   prunePendingAdmissions() {
@@ -229,6 +271,8 @@ class SessionManager extends EventEmitter {
     this.pendingProfileWrites.clear();
     this.profileWriteTails.clear();
     this.recentViolations.clear();
+    clearTimeout(this.maximumDurationTimer);
+    this.sessionDrain = undefined;
     this.voiceManager.reset();
     this.outbox = new WebhookOutbox({
       callbackUrl,
@@ -236,6 +280,7 @@ class SessionManager extends EventEmitter {
       fetchImpl: this.fetchImpl,
       now: () => new Date(this.now()),
       randomUUID: this.randomUUID,
+      logger: this.logger,
       ...this.outboxOptions,
     });
     this.session = {
@@ -264,6 +309,20 @@ class SessionManager extends EventEmitter {
         algorithm: input.tokenVerification.algorithm || "RS256",
       },
     };
+    this.maximumDurationTimer = setTimeout(() => {
+      this.logger.warn("session.maximum_duration_reached", {
+        sessionId: this.session?.sessionId,
+        maxSessionDurationMs: this.maxSessionDurationMs,
+      });
+      this.emit("maximum-duration");
+    }, this.maxSessionDurationMs);
+    this.maximumDurationTimer.unref?.();
+    this.logger.info("session.created", {
+      sessionId: this.session.sessionId,
+      authorityId: this.session.authorityId,
+      serverBuildId: this.session.serverBuildId,
+      rosterSize: this.session.roster.size,
+    });
     if (this.session.status === "active")
       this.outbox.enqueue("session.started", this.session.sessionId, {
         data: {
@@ -295,7 +354,9 @@ class SessionManager extends EventEmitter {
           blocked = await Promise.all(
             playerIds.map((playerId) => this.profileClient.isBlocked(playerId))
           );
+          this.dependencyState.playerProfile = "available";
         } catch (error) {
+          this.dependencyState.playerProfile = "unavailable";
           throw new BridgeError(
             error?.code || "player_profile_unavailable",
             Number.isInteger(error?.status) ? error.status : 503
@@ -412,8 +473,12 @@ class SessionManager extends EventEmitter {
         .then(() =>
           this.profileClient.loadDocument(claims.playerId, this.session.gameId)
         )
-        .then((document) => this.finishAuthorization(claims, document))
+        .then((document) => {
+          this.dependencyState.playerProfile = "available";
+          return this.finishAuthorization(claims, document);
+        })
         .catch((error) => {
+          this.dependencyState.playerProfile = "unavailable";
           this.usedTokenIds.delete(claims.jti);
           if (this.pendingByPlayer.get(claims.playerId) === reservationId)
             this.pendingByPlayer.delete(claims.playerId);
@@ -450,6 +515,11 @@ class SessionManager extends EventEmitter {
     this.pendingAdmissions.set(admissionId, identity);
     this.pendingByPlayer.set(claims.playerId, admissionId);
     this.documentsByAdmission.set(admissionId, structuredClone(document));
+    this.logger.info("player.admission_authorized", {
+      sessionId: identity.sessionId,
+      playerId: identity.playerId,
+      admissionId,
+    });
     try {
       const externalGrant = this.session.voiceGrants.get(claims.playerId);
       const externalParticipants = externalGrant
@@ -497,6 +567,11 @@ class SessionManager extends EventEmitter {
       joinedAt: new Date(this.now()).toISOString(),
     });
     this.voiceManager.activate(identity.admissionId, connectionId);
+    this.logger.info("player.connected", {
+      sessionId: identity.sessionId,
+      playerId: identity.playerId,
+      connectionId,
+    });
     this.outbox.enqueue("player.joined", this.session.sessionId, {
       playerId: identity.playerId,
       connectionId,
@@ -513,6 +588,11 @@ class SessionManager extends EventEmitter {
     if (document) this.queueProfileSave(identity, document);
     this.voiceManager.revokeAdmission(identity.admissionId);
     this.documentsByAdmission.delete(identity.admissionId);
+    this.logger.info("player.disconnected", {
+      sessionId: identity.sessionId,
+      playerId: identity.playerId,
+      connectionId,
+    });
     this.outbox.enqueue("player.left", this.session.sessionId, {
       playerId: identity.playerId,
       connectionId,
@@ -554,7 +634,17 @@ class SessionManager extends EventEmitter {
           savedDocument
         )
       )
+      .then(() => {
+        this.dependencyState.playerProfile = "available";
+        return true;
+      })
       .catch((error) => {
+        this.dependencyState.playerProfile = "unavailable";
+        this.logger.error("player_profile.write_failed", {
+          sessionId: identity.sessionId,
+          playerId: identity.playerId,
+          errorCode: error.code || "player_profile_unavailable",
+        });
         this.emit("profile-error", {
           code: error.code || "player_profile_unavailable",
           playerId: identity.playerId,
@@ -586,6 +676,12 @@ class SessionManager extends EventEmitter {
     if (lastReported !== undefined && this.now() - lastReported < 5_000)
       return false;
     this.recentViolations.set(key, this.now());
+    this.logger.warn("trust.violation", {
+      sessionId: this.session.sessionId,
+      playerId,
+      connectionId: active.connectionId,
+      violationType,
+    });
     this.outbox.enqueue("trust.violation", this.session.sessionId, {
       playerId,
       connectionId: active.connectionId,
@@ -596,10 +692,15 @@ class SessionManager extends EventEmitter {
 
   endSession(reason = "requested") {
     if (!this.enabled) throw new BridgeError("bridge_disabled", 404);
-    if (!this.session || this.session.status !== "active")
+    if (!this.session || !["active", "starting"].includes(this.session.status))
       throw new BridgeError("session_not_active", 409);
     this.session.status = "ending";
+    clearTimeout(this.maximumDurationTimer);
     this.voiceManager.reset();
+    this.logger.info("session.ending", {
+      sessionId: this.session.sessionId,
+      reason,
+    });
     const drain = (async () => {
       this.emit("session-ending", { reason });
       const playersDrained = await this.waitForPlayersDrained();
@@ -610,9 +711,24 @@ class SessionManager extends EventEmitter {
         { data: { reason, playersDrained } }
       );
       await Promise.allSettled([delivery, this.outbox.drain(5_000)]);
+      this.logger.info("session.ended", {
+        sessionId: this.session.sessionId,
+        reason,
+        playersDrained,
+      });
       return playersDrained;
     })();
+    this.sessionDrain = drain;
     return { state: this.getPublicState(), drain };
+  }
+
+  shutdown(reason = "process_shutdown") {
+    if (!this.enabled || !this.session) return Promise.resolve(true);
+    if (this.session.status === "ending")
+      return this.sessionDrain || Promise.resolve(true);
+    if (["active", "starting"].includes(this.session.status))
+      return this.endSession(reason).drain;
+    return Promise.resolve(true);
   }
 
   getPublicState() {
@@ -675,6 +791,8 @@ const sessionManager = new SessionManager({
   allowInsecureCallbacks: process.env.THNK_ALLOW_INSECURE_CALLBACKS === "true",
   voiceManager,
   profileClient,
+  maxSessionDurationMs:
+    process.env.THNK_MAX_SESSION_DURATION_MS || 4 * 60 * 60 * 1_000,
   runtimeIdentity: {
     gameId: process.env.THNK_RUNTIME_GAME_ID,
     authorityId: process.env.THNK_AUTHORITY_ID,

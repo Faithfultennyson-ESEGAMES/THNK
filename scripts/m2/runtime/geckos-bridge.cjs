@@ -1,12 +1,15 @@
 let geckosModule;
 const { AdmissionError } = require("./jwt-verifier.cjs");
 const { sessionManager } = require("./session-manager.cjs");
+const { structuredLogger } = require("./structured-logger.cjs");
 
 exports.loadGeckos = async () => {
   try {
     geckosModule ||= await import("@geckos.io/server");
   } catch (error) {
-    console.error("THNK_GECKOS_IMPORT_FAILED", error);
+    structuredLogger.error("geckos.import_failed", {
+      errorMessage: error?.message,
+    });
     throw error;
   }
 };
@@ -20,7 +23,9 @@ exports.createServer = (options) => {
         return sessionManager.authorize(authorization);
       } catch (error) {
         if (error instanceof AdmissionError) return error.status;
-        console.error("THNK_ADMISSION_FAILED", error);
+        structuredLogger.error("player.admission_failed", {
+          errorCode: error?.code || "internal_error",
+        });
         return 500;
       }
     };

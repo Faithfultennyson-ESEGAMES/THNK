@@ -1,0 +1,37 @@
+name: THNK CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+          cache: yarn
+      - name: Install pinned Yarn
+        run: npm install --global yarn@1.22.22
+      - name: Frozen install
+        run: yarn install --frozen-lockfile --non-interactive
+      - name: TypeScript
+        run: yarn ts
+      - name: Unit and contract tests
+        run: yarn test --runInBand
+      - name: Build generated extensions
+        run: yarn build
+      - name: Secret scan
+        run: yarn ci:secret-scan
+      - name: Production dependency audit
+        run: yarn ci:production-audit
+      - name: Headless control-plane smoke
+        run: yarn ci:headless-smoke
+      - name: Development stub contract smoke
+        run: yarn ci:stub-smoke

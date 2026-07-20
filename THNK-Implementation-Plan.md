@@ -1,6 +1,6 @@
 # THNK Server Platform — Implementation Plan
 
-**Status:** Draft v1 plan (M0-M6 complete; M7 retains release-candidate hardening)
+**Status:** M0-M6 complete; M7 core/platform release candidate passes, with the real companion-service acceptance gate pending
 
 **Prepared:** 2026-07-18
 
@@ -347,6 +347,15 @@ this plan; content unchanged except for the note on the stub matchmaker.)*
 - CI proves build, unit tests, integration tests, secret scanning, and the headless smoke test.
 - Known limitations and out-of-scope items are documented.
 - A full end-to-end run against real THNK Matchmaking and THNK Player Profile deployments (not just stubs) is performed at least once and recorded, even though those two repositories are tested primarily in their own plans.
+
+**Current status (2026-07-20):** The M7 implementation, documentation, CI,
+Windows two-client matrix, native Ubuntu 24.04/Xvfb matrix, and production
+container gate pass for format-5 build
+`sha256:808e515304088c927c10376d8cccccbbe4a86cdd2edca6d44708eac6cd2b8d6a`.
+The local Matchmaking/Player Profile stand-in passes the published Core
+contract. M7 remains formally open only because the two separately deployed
+companion implementations do not exist yet, so the final real-service
+acceptance criterion cannot honestly be executed or replaced with the stub.
 
 ## 5. Test strategy
 

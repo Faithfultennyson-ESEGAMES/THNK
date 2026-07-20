@@ -525,3 +525,85 @@ voice`).
 - An initial remote run placed its test harness inside the artifact and was
   correctly rejected by integrity validation. The harness was moved outside
   the bundle and the exact artifact restored before the passing run.
+
+## 2026-07-20 - M7 product hardening and release candidate
+
+### Runtime and operational hardening
+
+- Started `platform/m7-release-candidate` from M6 commit `3d91e94` and kept
+  Matchmaking and Player Profile implementations outside Core as planned.
+- Added newline-delimited structured logs with lifecycle correlation fields
+  and recursive redaction for authorization, tokens, secrets, certificates,
+  capabilities, private keys, passwords, and player documents. Test runs use a
+  no-op default sink unless a logger is explicitly supplied.
+- Added separate fixed-window limits for control, health, and public voice
+  routes, capped limiter storage, 64 KiB JSON bodies, 16 KiB headers, content
+  checks, request/body deadlines, safe response headers, and `Retry-After` on
+  throttling.
+- Added explicit live/ready endpoints. Readiness includes authority, session,
+  Player Profile, and webhook state; Player Profile failure closes readiness,
+  while webhook degradation remains visible without ending gameplay.
+- Added a four-hour default maximum session duration and bounded graceful
+  SIGINT/SIGTERM/session-end draining for Player Profile writes, lifecycle
+  webhooks, player disconnects, and renderer shutdown.
+
+### Release surface, dependencies, and CI
+
+- Bumped the exported artifact to format 5 and pinned Node 24.18.x,
+  Electron 43.1.1, and `@electron/remote` 2.1.3. Runtime packages now live in
+  production dependencies; Jest 30, ts-jest 29.4, TypeScript 5.9, tsup 8.5,
+  and Node 24 types cover the development graph.
+- Adapted Geckos/local/P2P typed-array boundaries for TypeScript 5.9 without
+  changing wire behavior. Production audit reports zero moderate/high/critical
+  advisories across 141 packages. The only full-graph finding is one low,
+  development-only esbuild local-server advisory.
+- Added Ubuntu 24.04/Node 24 CI for frozen install, TypeScript, Jest, build,
+  secret scan, production audit, lifecycle smoke, and stub contract smoke.
+- Added production configuration, compatibility, threat-model,
+  troubleshooting, and start-to-stop guides plus a loopback-only executable
+  Matchmaking/Player Profile stand-in.
+
+### Platform and container findings
+
+- Exact format-5 release build:
+  `sha256:808e515304088c927c10376d8cccccbbe4a86cdd2edca6d44708eac6cd2b8d6a`.
+- Electron 43.1.1 passed the complete M7 two-client matrix twice before the
+  documentation-only final re-export, and the exact final hash passed once
+  more, including distinct identities, fresh-token reconnect,
+  adversarial token rejection, external per-player voice grants, provider
+  outage isolation, signed webhook drain, and exit code 0.
+- Ubuntu 24.04.4 x86-64 with Node 24.18.0, Electron 43.1.1, Xvfb, and the
+  setuid Chromium sandbox passed blocked preflight, distinct Alice/Bob
+  admission, readiness, payload/rate controls, structured-log redaction,
+  external voice without local Agora credentials, webhook drain, and exit 0.
+- The first container build found that Node 24's image already provides Yarn;
+  reinstalling it failed. The next build showed Electron 43 no longer downloads
+  its platform binary during dependency installation, so the Docker and
+  generated-bundle instructions now run its explicit installer. Runtime smoke
+  then identified missing `xauth` and Docker's default seccomp rejection of
+  Chromium's nested namespace sandbox.
+- The final image adds xauth, runs Electron with `--no-sandbox` only inside the
+  non-root container boundary, and does not request privileged mode or extra
+  capabilities. Native Ubuntu retains the root-owned mode-4755 sandbox.
+  Image
+  `sha256:83c3bc1a87c0df163a17440032f32c835bc32f7bb088e37d868b744cd4e045ed`
+  runs as UID 10001 with Node 24.18.0, Yarn 1.22.22, and Electron 43.1.1;
+  liveness returned 200 and readiness correctly returned 503 before assignment.
+  Splitting dependency installation from the bundle copy made platform downloads
+  reusable and avoiding a recursive ownership rewrite kept the root-owned,
+  service-user-read-only final image to 469,917,558 bytes.
+
+### Verification and remaining gate
+
+- Frozen install, TypeScript, 17 Jest suites/73 tests, full build, exact bundle
+  validation, production-only bundle install, secret scan (including the
+  externally supplied Agora values), production audit, headless lifecycle
+  smoke, stub contract smoke, client export, Windows runtime matrix, Ubuntu
+  runtime matrix, and container runtime smoke passed.
+- The App ID/App Certificate file remained external to the repository; supplied
+  secret values were scanned against 890 files with zero leaks.
+- Core M7 implementation and all available platform gates are complete. Formal
+  M7 closure remains pending only on one real end-to-end run against separately
+  deployed THNK Matchmaking and THNK Player Profile implementations. Those
+  repositories do not exist yet, so the passing local stand-in is recorded as
+  contract evidence and not substituted for the external acceptance gate.

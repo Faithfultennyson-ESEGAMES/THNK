@@ -10,9 +10,18 @@ const { evaluate, sendCommand } = require("../m1/inspect-runtime");
 const repositoryRoot = path.resolve(__dirname, "../..");
 const m4Check = process.env.THNK_M4_CHECK === "true";
 const m5Check = process.env.THNK_M5_CHECK === "true";
-const m6Check = process.env.THNK_M6_CHECK === "true";
+const m7Check = process.env.THNK_M7_CHECK === "true";
+const m6Check = m7Check || process.env.THNK_M6_CHECK === "true";
 const liveAgora = process.env.THNK_M4_LIVE === "true";
-const milestone = m6Check ? "M6" : m5Check ? "M5" : m4Check ? "M4" : "M3";
+const milestone = m7Check
+  ? "M7"
+  : m6Check
+  ? "M6"
+  : m5Check
+  ? "M5"
+  : m4Check
+  ? "M4"
+  : "M3";
 const voiceCheck = m4Check || m6Check;
 const bundlePath = path.resolve(
   process.env.THNK_TEST_BUNDLE ||
@@ -24,7 +33,9 @@ const clientBuild = path.resolve(
 );
 const generatedRoot = path.join(
   repositoryRoot,
-  m6Check
+  m7Check
+    ? ".generated/m7/integration-clients"
+    : m6Check
     ? ".generated/m6"
     : m5Check
     ? ".generated/m5/integration-clients"

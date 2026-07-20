@@ -70,7 +70,15 @@ test("serves authenticated one-session control lifecycle and health", async () =
   });
   await expect(request(baseUrl, "/health/ready")).resolves.toEqual({
     status: 503,
-    body: { status: "not_ready" },
+    body: {
+      status: "not_ready",
+      checks: {
+        authority: "ready",
+        session: "absent",
+        playerProfile: "disabled",
+        webhook: "available",
+      },
+    },
   });
   await expect(request(baseUrl, "/v1/session")).resolves.toMatchObject({
     status: 401,
