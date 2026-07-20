@@ -663,3 +663,28 @@ voice`).
   build resolution against two Core control endpoints. The exact native bundle
   contains one `duel` authority, so it validates tag/admission interoperability
   while multi-authority dispatch is covered at the real HTTP contract boundary.
+
+## 2026-07-20 - External Matchmaking M4 regional-routing gate
+
+- Matchmaking code commit 2666df8 added regional Core/game deployments,
+  repeated QoS summaries, local MaxMind City lookup, GeoIP candidate ordering,
+  and party-wide worst-player region selection. The final evidence commit is
+  1cb2cc5 on matchmaking/m4-regional-qos.
+- A real-Redis, two-Matchmaking-instance gate gave Alice a Nigeria/Africa
+  location and Bob a US/North-America location. Their geographically preferred
+  edge regions disagreed, while QoS minimax converged both players on one
+  central Core deployment. Core metadata, assignments, and signed admissions
+  all carried the same selected region.
+- The exact M4 source archive matched between Windows and Ubuntu at SHA-256
+  3f34f63065191dae5a6615c7e14403e9605e123a2f48455258155b0784d94fac.
+  Ubuntu 24.04.4 passed frozen install, 25 tests, build, all M0-M4 Matchmaking
+  integrations, the 37-package audit, and a real GeoLite2-City database lookup.
+- M4 then reran the native Core gate against exact build
+  sha256:808e515304088c927c10376d8cccccbbe4a86cdd2edca6d44708eac6cd2b8d6a.
+  Core accepted all four distinct admissions with the added default region
+  claim, preserved party/team tags, and completed signed lifecycle cleanup.
+- This closes the regional-routing compatibility check without moving GeoIP or
+  matchmaking policy into Core. The previously recorded M5/M6 technical work
+  remains unchanged: trusted content identity, detectable trust violations,
+  supervisor-first admission, and per-player external Agora grants with
+  matchmaker-owned refresh authorization.
