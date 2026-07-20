@@ -636,10 +636,11 @@ voice`).
   `sha256:808e515304088c927c10376d8cccccbbe4a86cdd2edca6d44708eac6cd2b8d6a`.
   Alice and Bob's distinct Matchmaking-issued tokens were accepted by the real
   Geckos endpoint and Core's signed end callback cleaned Matchmaking state.
-- Matchmaking M2 commit `9aa67f0` then created a real four-player private lobby,
-  auto-started it after all members became ready, and handed the exact roster to
-  the same Core build. All four distinct admissions were accepted; signed end
-  lifecycle removed the linked lobby/session state; captured logs contained no
+- Matchmaking M2 final code commit `a767fe1` then created a real four-player
+  private lobby, auto-started it after all members became ready, and handed the
+  exact roster to the same Core build. All four distinct admissions were
+  accepted; signed end lifecycle removed the linked lobby/session state;
+  captured logs contained no
   tested control secret, webhook secret, or admission token.
 - These gates close the previously pending external Matchmaking-to-Core portion
   of M7 verification. The separately deployed Player Profile production-service
