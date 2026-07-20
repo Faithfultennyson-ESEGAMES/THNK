@@ -688,3 +688,24 @@ voice`).
   remains unchanged: trusted content identity, detectable trust violations,
   supervisor-first admission, and per-player external Agora grants with
   matchmaker-owned refresh authorization.
+
+## 2026-07-20 - External Matchmaking M5 voice-grant gate
+
+- Matchmaking M5 now owns Agora credential custody, complete per-roster voice
+  grant issuance, lobby-to-session handoff, capability refresh, and lifecycle
+  revocation. Core continues to validate and consume the exact external grant;
+  it never receives the Agora App Certificate and does not proxy Matchmaking's
+  refresh endpoint.
+- An initial native attempt correctly rejected an HTTP loopback refresh URL as
+  `invalid_external_voice_grant`. Matchmaking tightened both startup and schema
+  validation to require HTTPS, matching Core's existing contract.
+- On Ubuntu 24.04.4 x86-64 under Xvfb, final Matchmaking code commit `a94cc28`
+  started a four-player session against exact Core build
+  `sha256:808e515304088c927c10376d8cccccbbe4a86cdd2edca6d44708eac6cd2b8d6a`.
+  Core accepted four distinct Matchmaking-issued external grants and four
+  distinct admissions, preserved party/team tags, emitted signed lifecycle
+  cleanup, and Matchmaking revoked the ended-session refresh capability.
+- This closes the executable external Matchmaking-to-Core voice ownership gate.
+  The production Player Profile repository remains separate; Matchmaking M5
+  currently proves its friendship, durable-DM, unread, and chat-filter tally
+  API through an independently authenticated contract stub.
