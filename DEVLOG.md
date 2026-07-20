@@ -646,3 +646,20 @@ voice`).
   of M7 verification. The separately deployed Player Profile production-service
   gate remains pending; M2 friendship checks used an independently authenticated
   contract stub and are not represented as a completed Player Profile service.
+
+## 2026-07-20 - External Matchmaking M3 team-routing gate
+
+- Matchmaking code commit `dfaeb90` generalized its Core handoff from one target
+  to validated queue rules and mode routes while preserving Core's exact M7
+  control/admission contracts. Matchmaking, not Core, resolves team policy and
+  signs opaque `team`/`squad` tags.
+- On Ubuntu 24.04.4 x86-64, an Alice/Bob party plus Carol/Dave backfill produced
+  one real four-player session on exact Core build
+  `sha256:808e515304088c927c10376d8cccccbbe4a86cdd2edca6d44708eac6cd2b8d6a`.
+  Core accepted all four distinct tokens with Alice/Bob tagged team A and
+  Carol/Dave team B, then emitted the signed lifecycle event that cleaned the
+  external session state.
+- The stubbed two-route gate separately proved queue-to-mode-to-authority/map/
+  build resolution against two Core control endpoints. The exact native bundle
+  contains one `duel` authority, so it validates tag/admission interoperability
+  while multi-authority dispatch is covered at the real HTTP contract boundary.
