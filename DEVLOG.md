@@ -607,3 +607,20 @@ voice`).
   deployed THNK Matchmaking and THNK Player Profile implementations. Those
   repositories do not exist yet, so the passing local stand-in is recorded as
   contract evidence and not substituted for the external acceptance gate.
+
+## 2026-07-20 - M7 delivery and Matchmaking handoff
+
+- Committed the M7 release candidate as `18566a1` and pushed
+  `platform/m7-release-candidate` to the writable project origin. The
+  user-owned `.vscode/settings.json` change remained outside the commit.
+- Confirmed the final format-5 artifact and its documented Windows,
+  Ubuntu/Xvfb, and container evidence are the Core contract baseline for the
+  separate `THNK-Matchmaking` repository.
+- Began the Matchmaking workstream in a sibling repository. Core remains
+  responsible for artifact validation, supervised session creation, signed
+  player admission, lifecycle callbacks, Player Profile hooks, and voice-grant
+  consumption; Matchmaking owns queues, lobbies, assignments, signing-key
+  custody, Bridge orchestration, and matchmaker-owned voice grants.
+- The real-service M7 acceptance gate will be revisited after Matchmaking and
+  Player Profile have executable integration milestones; the in-Core stub is
+  still intentionally not treated as either production companion service.
