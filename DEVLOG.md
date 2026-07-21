@@ -787,12 +787,13 @@ voice`).
   enforces declared IDs, schema-bound targets, monotonic progress, and
   irreversible unlocks. The companion GDevelop extension supplies the five M2
   achievement operations with server-only pre-mutation guards.
-- The native amendment's Step 0 is only partially proven: GDevelop 5.6.274
-  imports the Cordova dependency and a pinned standalone Cordova Android APK
-  compiles with the plugin, but no Android device/emulator is connected and
-  GDevelop Cordova export is UI-only. Production Android Google/Facebook SDK
-  work remains intentionally gated until a GDevelop-produced APK calls the
-  spike on-device.
+- The native amendment's Step 0 is proven end to end. GDevelop 5.6.274 exported
+  the fixture through its normal Android/Cordova path, Cordova Android 15.0.0
+  built that exact export, and ADB installed it on an Infinix X6880 running
+  Android 15. Android UIAutomator observed the custom Java plugin's callback
+  value `THNK_SPIKE_OK`. The APK SHA-256 is
+  `ef07111df26f25cca199dfcb8f720f128dd0b438b219efa8e24867d334871b48`.
+  M2.0 is complete and production Android Google/Facebook SDK work is unblocked.
 - Core required no runtime change. Its once-future M2 document integration is
   now executable; the Player Profile M4 blocked/moderation administration flow
   remains separate future work.
