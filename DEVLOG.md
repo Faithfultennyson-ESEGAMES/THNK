@@ -709,3 +709,28 @@ voice`).
   The production Player Profile repository remains separate; Matchmaking M5
   currently proves its friendship, durable-DM, unread, and chat-filter tally
   API through an independently authenticated contract stub.
+
+## 2026-07-21 - External Matchmaking M6 scale and recovery gate
+
+- Matchmaking M6 added drain-aware readiness, tracked public/private Core
+  handoffs, shared Redis action limits, non-overridable/redacted structured
+  logging, a pinned production container, and a full deployment runbook.
+- The Windows gate ran three Matchmaking replicas over one Redis namespace and
+  two Core regions: 96 concurrent public players formed 24 four-player sessions
+  and 48 private players formed 12 sessions with no duplicate placement, lost
+  ticket, orphan ownership, or player-ID crossover.
+- Exact Matchmaking commit `c058e8f` matched on Ubuntu at SHA-256
+  `87166b92a4024ff94cf4eaeee00f19088a6b92894e495781b4fac1539f12ecfa`.
+  Its 48-player characterization passed six private and twelve public sessions,
+  including four clients from a deliberately drained handoff reconnecting to a
+  surviving replica and recovering only their exact assignment through
+  `match.status`.
+- Under Xvfb, that artifact reran the external gate against exact Core build
+  `sha256:808e515304088c927c10376d8cccccbbe4a86cdd2edca6d44708eac6cd2b8d6a`.
+  Core accepted four distinct admissions and external Agora grants, preserved
+  teams, and completed signed lifecycle/revocation cleanup with secrets
+  redacted. Core required no M6 code change.
+- Matchmaking's 35 tests/build and 46-package production audit also passed with
+  zero known vulnerabilities. Production Player Profile certification remains
+  a named future external gate; Matchmaking currently exercises its exact API
+  contract through the stub by project design.
