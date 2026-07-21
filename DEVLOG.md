@@ -836,3 +836,53 @@ voice`).
   real-PostgreSQL M2.4 integration, and the 79-package zero-vulnerability audit
   pass. Core requires no runtime change because its existing authoritative
   document writes are the source feeding the ranking projection.
+
+## 2026-07-21 - Patch: dynamic voice channels, server time, generic change events
+
+- Implemented `CORE-PATCH-DYNAMIC-VOICE-AND-GENERIC-TOOLS.md` together with
+  its Matchmaking companion (Matchmaking commit `f515966` adds the
+  per-player grant issuance and channel-reissue capability this depends on).
+- Dynamic per-player voice channels: the session grant validation now
+  requires only a shared App ID; each roster member's grant may carry its
+  own channel. The default path is unchanged — when nobody assigns a
+  channel, every player still lands on the identical session-derived
+  channel, proven by the untouched M4-M7 suites. `setVoiceChannel` on the
+  session manager moves a live, connected player mid-session: in the
+  externally-granted path it POSTs the player's own opaque refresh
+  capability plus `{channel}` to the matchmaker's reissue endpoint,
+  validates the returned grant, stores it, and emits `voice-grant-updated`;
+  with bundle-local Agora credentials it mints the new-channel token
+  directly. Reassignment reuses the same capability in both paths, so
+  rapid repeated moves leak nothing; a non-connected player, an invalid
+  channel name, and a matchmaker 429 are surfaced as distinct errors.
+  `getPlayerVoiceChannel` reads the live assignment, and the geckos bridge
+  exposes both plus a `voice-grant-updated` subscription. The client-side
+  Agora handler now treats a refresh that returns a different channel as a
+  migration (leave, rejoin new channel) instead of rejecting it, while
+  still rejecting uid/appId changes.
+- New GDevelop surface in the THNK extension: server-only
+  `Set Voice Channel(playerId, channelId)` and `GetPlayerVoiceChannel`,
+  `GetServerTimestamp()` (the Authority's own clock, milliseconds since
+  the Unix epoch, 0 in client-tagged code — the single trusted primitive
+  for time-gated systems), and `On Player Variable Changed(fieldName)`.
+- The change event fires exactly once per actual value change of a watched
+  document field — same-value writes do not fire — covers both own
+  `SetPlayerVariable` writes and document loads reflecting changes made
+  elsewhere, picks the changed player, ignores fields no condition has
+  watched, and drops pending events for released players. This generic
+  event deliberately replaces any bespoke achievement/level-up surface.
+- Verification: strict typecheck and all 82 Jest tests pass (eight new:
+  per-player grant acceptance with mixed-appId rejection, external
+  reassignment through a stubbed matchmaker with capability-derived
+  authentication, 429 propagation, bundle-local reassignment without
+  capability leaks, client channel-migration on refresh, and the
+  server-time/change-event suite). The Matchmaking repository's
+  `test:voice:channels:core` gate additionally drives this exact
+  `session-manager.cjs` against the real Matchmaking server and Redis:
+  default channel at admission, live reassignment via the real reissue
+  endpoint, matchmaker-side participant-list sync, shared cooldown (429),
+  capability stability across repeated moves, and rejection of a
+  never-connected player.
+- Remaining external gate: a GDevelop export/device pass over the four new
+  extension functions and a live-Agora two-device audible-migration check;
+  the structural halves are fully proven above.

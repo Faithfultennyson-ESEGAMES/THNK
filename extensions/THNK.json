@@ -581,6 +581,124 @@
       "objectGroups": []
     },
     {
+      "description": "Fires once per actual value change of the named document field of a player, whether the change came from this session's own Set Player Variable write or from a fresh document load reflecting a change made elsewhere. The changed player becomes the currently picked player. Fields are only tracked once this condition starts watching them.",
+      "fullName": "On player variable changed",
+      "functionType": "Condition",
+      "group": "Server/Player document",
+      "name": "OnPlayerVariableChanged",
+      "sentence": "Player variable _PARAM1_ changed",
+      "events": [
+        {
+          "type": "BuiltinCommonInstructions::JsCode",
+          "inlineCode": [
+            "if (runtimeScene.thnkServer) eventsFunctionContext.returnValue = THNK.players.popPlayerVariableChange(eventsFunctionContext.getArgument(\"VariableName\"));",
+            ""
+          ],
+          "parameterObjects": "",
+          "useStrict": true,
+          "eventsSheetExpanded": false
+        }
+      ],
+      "parameters": [
+        {
+          "description": "Dot-separated document path, for example progression.xp",
+          "name": "VariableName",
+          "type": "string"
+        }
+      ],
+      "objectGroups": []
+    },
+    {
+      "description": "Returns the Authority process's own trusted clock as milliseconds since the Unix epoch. Use it in server-tagged event logic for any time-gated system (daily rewards, cooldowns, streaks) instead of ever trusting a client-reported time. Returns 0 in client-tagged code.",
+      "fullName": "Server timestamp (ms)",
+      "functionType": "Expression",
+      "group": "Server",
+      "name": "GetServerTimestamp",
+      "sentence": "",
+      "events": [
+        {
+          "type": "BuiltinCommonInstructions::JsCode",
+          "inlineCode": [
+            "eventsFunctionContext.returnValue = runtimeScene.thnkClient ? 0 : THNK.getServerTimestamp();",
+            ""
+          ],
+          "parameterObjects": "",
+          "useStrict": true,
+          "eventsSheetExpanded": false
+        }
+      ],
+      "expressionType": {
+        "type": "number"
+      },
+      "parameters": [],
+      "objectGroups": []
+    },
+    {
+      "description": "Moves a player to the named voice channel, live, mid-session. Calling it again with a different channel moves them again. In the externally-granted voice path this reissues the player's grant through the matchmaker; with bundle-local Agora credentials the Authority mints the new grant directly. This action throws when invoked by client code.",
+      "fullName": "Set voice channel",
+      "functionType": "Action",
+      "group": "Server/Voice",
+      "name": "SetVoiceChannel",
+      "sentence": "Move player _PARAM1_ to voice channel _PARAM2_",
+      "events": [
+        {
+          "type": "BuiltinCommonInstructions::JsCode",
+          "inlineCode": [
+            "if (runtimeScene.thnkClient) throw new Error(\"THNK Set Voice Channel is server-only and cannot run in a client-tagged event.\");",
+            "THNK.voiceControl.setPlayerVoiceChannel(",
+            "    eventsFunctionContext.getArgument(\"PlayerID\"),",
+            "    eventsFunctionContext.getArgument(\"ChannelID\")",
+            ").catch((error) => console.error(\"THNK voice channel reassignment failed:\", error));",
+            ""
+          ],
+          "parameterObjects": "",
+          "useStrict": true,
+          "eventsSheetExpanded": false
+        }
+      ],
+      "parameters": [
+        {
+          "description": "Canonical player ID",
+          "name": "PlayerID",
+          "type": "string"
+        },
+        {
+          "description": "Target voice channel name",
+          "name": "ChannelID",
+          "type": "string"
+        }
+      ],
+      "objectGroups": []
+    },
+    {
+      "description": "Returns the voice channel a player is currently assigned to, or an empty string when the player has no active voice grant.",
+      "fullName": "Player's voice channel",
+      "functionType": "StringExpression",
+      "group": "Server/Voice",
+      "name": "GetPlayerVoiceChannel",
+      "sentence": "",
+      "events": [
+        {
+          "type": "BuiltinCommonInstructions::JsCode",
+          "inlineCode": [
+            "eventsFunctionContext.returnValue = runtimeScene.thnkServer ? THNK.voiceControl.getPlayerVoiceChannel(eventsFunctionContext.getArgument(\"PlayerID\")) : \"\";",
+            ""
+          ],
+          "parameterObjects": "",
+          "useStrict": true,
+          "eventsSheetExpanded": false
+        }
+      ],
+      "parameters": [
+        {
+          "description": "Canonical player ID",
+          "name": "PlayerID",
+          "type": "string"
+        }
+      ],
+      "objectGroups": []
+    },
+    {
       "description": "Links an object to the currently selected player.",
       "fullName": "Link object to the player",
       "functionType": "Action",

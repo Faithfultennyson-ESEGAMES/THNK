@@ -4,6 +4,8 @@ type PlayerTag = string | number | boolean;
 const playerTags = new Map<string, Readonly<Record<string, PlayerTag>>>();
 const playerDocuments = new Map<string, gdjs.Variable>();
 const playerDocumentWriters = new Map<string, (document: unknown) => void>();
+const watchedFields = new Set<string>();
+const pendingVariableChanges: Array<{ playerID: string; path: string }> = [];
 
 const getDocumentVariable = (
   playerID: string,
@@ -31,6 +33,41 @@ const getDocumentVariable = (
   return variable;
 };
 
+const serializeWatchedField = (playerID: string, path: string): string =>
+  JSON.stringify(getDocumentVariable(playerID, path)?.toJSObject() ?? null);
+
+const snapshotWatchedFields = (playerID: string): Map<string, string> => {
+  const snapshot = new Map<string, string>();
+  for (const path of watchedFields)
+    snapshot.set(path, serializeWatchedField(playerID, path));
+  return snapshot;
+};
+
+const enqueueWatchedFieldChanges = (
+  playerID: string,
+  before: Map<string, string>
+) => {
+  for (const [path, previous] of before)
+    if (serializeWatchedField(playerID, path) !== previous)
+      pendingVariableChanges.push({ playerID, path });
+};
+
+export const watchPlayerVariable = (path: string) => {
+  if (path) watchedFields.add(path);
+};
+
+export const popPlayerVariableChange = (path: string): boolean => {
+  if (!path) return false;
+  watchedFields.add(path);
+  const index = pendingVariableChanges.findIndex(
+    (change) => change.path === path
+  );
+  if (index < 0) return false;
+  const [change] = pendingVariableChanges.splice(index, 1);
+  currentPlayerID = change!.playerID;
+  return true;
+};
+
 export const getCurrentPlayerID = () => currentPlayerID;
 export const switchPlayerContext = (playerID: string) => {
   currentPlayerID = playerID;
@@ -40,6 +77,9 @@ export const releasePlayerContext = (playerID: string) => {
   playerTags.delete(playerID);
   playerDocuments.delete(playerID);
   playerDocumentWriters.delete(playerID);
+  for (let index = pendingVariableChanges.length - 1; index >= 0; index -= 1)
+    if (pendingVariableChanges[index]!.playerID === playerID)
+      pendingVariableChanges.splice(index, 1);
   if (currentPlayerID === playerID) currentPlayerID = "";
 };
 export const resetPlayerContexts = () => {
@@ -48,6 +88,8 @@ export const resetPlayerContexts = () => {
   playerTags.clear();
   playerDocuments.clear();
   playerDocumentWriters.clear();
+  watchedFields.clear();
+  pendingVariableChanges.length = 0;
 };
 export const setPlayerTags = (
   playerID: string,
@@ -64,9 +106,13 @@ export const setPlayerDocument = (
   document: unknown = {},
   onChange?: (document: unknown) => void
 ) => {
+  const before = playerDocuments.has(playerID)
+    ? snapshotWatchedFields(playerID)
+    : undefined;
   const variable = new gdjs.Variable();
   variable.fromJSObject(document);
   playerDocuments.set(playerID, variable);
+  if (before) enqueueWatchedFieldChanges(playerID, before);
   if (onChange) playerDocumentWriters.set(playerID, onChange);
 };
 export const getPlayerDocument = (playerID: string): unknown =>
@@ -89,7 +135,9 @@ export const setCurrentPlayerVariable = (
     return false;
   const target = getDocumentVariable(currentPlayerID, path, true);
   if (!target) return false;
+  const before = snapshotWatchedFields(currentPlayerID);
   gdjs.Variable.copy(value, target);
+  enqueueWatchedFieldChanges(currentPlayerID, before);
   playerDocumentWriters.get(currentPlayerID)?.(
     playerDocuments.get(currentPlayerID)!.toJSObject()
   );

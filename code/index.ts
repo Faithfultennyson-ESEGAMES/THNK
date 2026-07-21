@@ -3,6 +3,8 @@ export * as client from "client";
 export { ClientAdapter, ServerAdapter } from "adapters/Adapter";
 export * as settings from "utils/Settings";
 export * as players from "server/PlayerContext";
+export { getServerTimestamp } from "server/ServerTime";
+export * as voiceControl from "server/VoiceControl";
 
 // A sort of polyfill to unify the different text objects get/set APIs.
 // Since THNK loads as GDJS files are still loading, the callback is 

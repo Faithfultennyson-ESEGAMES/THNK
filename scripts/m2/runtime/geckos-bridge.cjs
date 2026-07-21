@@ -49,3 +49,14 @@ exports.onSessionEnding = (callback) => {
   sessionManager.on("session-ending", callback);
   return () => sessionManager.off("session-ending", callback);
 };
+
+exports.setVoiceChannel = (playerId, channelId) =>
+  sessionManager.setVoiceChannel(playerId, channelId);
+
+exports.getPlayerVoiceChannel = (playerId) =>
+  sessionManager.getPlayerVoiceChannel(playerId);
+
+exports.onVoiceGrantUpdated = (callback) => {
+  sessionManager.on("voice-grant-updated", callback);
+  return () => sessionManager.off("voice-grant-updated", callback);
+};

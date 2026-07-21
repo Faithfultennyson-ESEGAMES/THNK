@@ -228,7 +228,7 @@ class SessionManager extends EventEmitter {
       const voiceTokens = new Set();
       const refreshCapabilities = new Set();
       for (const grant of voiceGrants.values()) {
-        if (grant.appId !== first.appId || grant.channel !== first.channel)
+        if (grant.appId !== first.appId)
           throw new BridgeError("voice_grants_not_session_isolated");
         if (
           voiceUids.has(grant.uid) ||
@@ -760,6 +760,88 @@ class SessionManager extends EventEmitter {
     if (!this.enabled || !this.session || this.session.status !== "active")
       throw new VoiceError("session_not_active", 503);
     return this.voiceManager.refresh(authorizationHeader);
+  }
+
+  async setVoiceChannel(playerId, channelId) {
+    if (!this.enabled || !this.session || this.session.status !== "active")
+      throw new VoiceError("session_not_active", 503);
+    if (
+      typeof channelId !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(channelId)
+    )
+      throw new VoiceError("invalid_voice_channel", 400);
+    const active = this.activePlayers.get(playerId);
+    if (!active) throw new VoiceError("player_not_in_session", 403);
+    const externalGrant = this.session.voiceGrants.get(playerId);
+    if (externalGrant) {
+      let response;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3_000);
+      timeout.unref?.();
+      try {
+        response = await this.fetchImpl(externalGrant.refreshUrl, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${externalGrant.refreshCapability}`,
+          },
+          body: JSON.stringify({ channel: channelId }),
+          signal: controller.signal,
+        });
+      } catch {
+        throw new VoiceError("voice_reassignment_unavailable", 503);
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (!response.ok)
+        throw new VoiceError(
+          response.status === 429
+            ? "voice_refresh_too_frequent"
+            : "voice_reassignment_rejected",
+          response.status === 429 ? 429 : 502
+        );
+      const payload = await response.json().catch(() => undefined);
+      let grant;
+      try {
+        grant = validateExternalGrant(payload?.grant, this.now());
+      } catch {
+        throw new VoiceError("voice_reassignment_rejected", 502);
+      }
+      if (grant.channel !== channelId)
+        throw new VoiceError("voice_reassignment_rejected", 502);
+      const updated = Object.freeze({
+        ...grant,
+        participants: payload.grant.participants || [],
+      });
+      this.session.voiceGrants.set(playerId, updated);
+      this.logger.info("voice.channel_changed", {
+        sessionId: this.session.sessionId,
+        playerId,
+        connectionId: active.connectionId,
+        path: "external",
+      });
+      this.emit("voice-grant-updated", { playerId, grant: updated });
+      return updated;
+    }
+    const grant = this.voiceManager.setChannel(active.admissionId, channelId);
+    if (!grant) throw new VoiceError("voice_disabled", 404);
+    this.logger.info("voice.channel_changed", {
+      sessionId: this.session.sessionId,
+      playerId,
+      connectionId: active.connectionId,
+      path: "bundle-local",
+    });
+    this.emit("voice-grant-updated", { playerId, grant });
+    return grant;
+  }
+
+  getPlayerVoiceChannel(playerId) {
+    if (!this.session) return "";
+    const externalGrant = this.session.voiceGrants.get(playerId);
+    if (externalGrant) return externalGrant.channel;
+    const active = this.activePlayers.get(playerId);
+    if (!active) return "";
+    return this.voiceManager.channelFor(active.admissionId) || "";
   }
 }
 

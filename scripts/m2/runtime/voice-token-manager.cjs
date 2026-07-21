@@ -271,6 +271,24 @@ class VoiceTokenManager {
     if (capabilityHash) this.recordsByCapabilityHash.delete(capabilityHash);
   }
 
+  setChannel(admissionId, channel) {
+    if (!this.enabled) return undefined;
+    const capabilityHash = this.capabilityHashByAdmission.get(admissionId);
+    if (!capabilityHash || capabilityHash.startsWith("external:"))
+      return undefined;
+    const record = this.recordsByCapabilityHash.get(capabilityHash);
+    if (!record || record.state !== "active") return undefined;
+    record.channel = channel;
+    return this.createToken(record);
+  }
+
+  channelFor(admissionId) {
+    const capabilityHash = this.capabilityHashByAdmission.get(admissionId);
+    if (!capabilityHash || capabilityHash.startsWith("external:"))
+      return undefined;
+    return this.recordsByCapabilityHash.get(capabilityHash)?.channel;
+  }
+
   refresh(authorizationHeader) {
     if (!this.enabled) throw new VoiceError("voice_disabled", 404);
     const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(

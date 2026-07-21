@@ -33,6 +33,11 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
           playerId: string,
           violationType: string
         ) => boolean;
+        setVoiceChannel?: (
+          playerId: string,
+          channelId: string
+        ) => Promise<unknown>;
+        getPlayerVoiceChannel?: (playerId: string) => string;
         onSessionEnding: (callback: () => void) => () => void;
       }
     | undefined;
@@ -82,11 +87,21 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
             playerId: string,
             violationType: string
           ) => boolean;
+          setVoiceChannel?: (
+            playerId: string,
+            channelId: string
+          ) => Promise<unknown>;
+          getPlayerVoiceChannel?: (playerId: string) => string;
           onSessionEnding: (callback: () => void) => () => void;
         }>(thnkGeckosBridgePath);
         await bridge.loadGeckos();
         geckos = bridge.createServer;
         this.bridge = bridge;
+        if (bridge.setVoiceChannel && bridge.getPlayerVoiceChannel)
+          THNK.voiceControl.registerVoiceBridge({
+            setVoiceChannel: bridge.setVoiceChannel,
+            getPlayerVoiceChannel: bridge.getPlayerVoiceChannel,
+          });
         this.removeSessionEndingListener = bridge.onSessionEnding(() => {
           for (const channel of this.channels.values()) channel.close();
         });

@@ -283,8 +283,9 @@ export class AgoraSessionVoice {
           });
         if (
           body.appId !== grant.appId ||
-          body.channel !== grant.channel ||
           body.uid !== grant.uid ||
+          typeof body.channel !== "string" ||
+          body.channel.length < 1 ||
           typeof body.token !== "string" ||
           typeof body.expiresAt !== "string"
         )
@@ -292,9 +293,14 @@ export class AgoraSessionVoice {
             code: "invalid_voice_refresh",
           });
         if (generation !== this.generation || !this.client) return;
+        // The matchmaker may reassign this player to a different channel
+        // mid-session (Set Voice Channel); a refresh returning a new channel
+        // migrates the connection instead of only renewing the token.
+        const channelChanged = body.channel !== grant.channel;
+        grant.channel = body.channel;
         grant.token = body.token;
         grant.expiresAt = body.expiresAt;
-        if (expired) {
+        if (expired || channelChanged) {
           await this.leaveInternal(false);
           this.state = "DISCONNECTED";
           if (generation === this.generation) await this.join();

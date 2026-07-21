@@ -162,6 +162,60 @@ test("refreshes with the opaque capability and rejects identity changes in a res
   expect(voice.getLastError()).toBe("");
 });
 
+test("a refresh returning a new channel migrates the connection to it", async () => {
+  const fetchImpl = jest.fn(
+    async () =>
+      new Response(
+        JSON.stringify({
+          appId: "a".repeat(32),
+          channel: "squad-red",
+          uid: "alice-uid",
+          token: "007-squad-red-token",
+          expiresAt: new Date(Date.now() + 600_000).toISOString(),
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+  );
+  const { voice, client } = makeVoice({ fetchImpl });
+  await voice.handleAdmission(grant());
+  expect(client.join).toHaveBeenLastCalledWith(
+    "a".repeat(32),
+    "thnk-session-channel",
+    "007-initial-token",
+    "alice-uid"
+  );
+
+  await (voice as any).refreshToken(false);
+
+  expect(client.renewToken).not.toHaveBeenCalled();
+  expect(client.leave).toHaveBeenCalled();
+  expect(client.join).toHaveBeenLastCalledWith(
+    "a".repeat(32),
+    "squad-red",
+    "007-squad-red-token",
+    "alice-uid"
+  );
+  expect(voice.getLastError()).toBe("");
+
+  const changedIdentity = jest.fn(
+    async () =>
+      new Response(
+        JSON.stringify({
+          appId: "a".repeat(32),
+          channel: "squad-red",
+          uid: "mallory-uid",
+          token: "007-stolen-token",
+          expiresAt: new Date(Date.now() + 600_000).toISOString(),
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+  );
+  const stolen = makeVoice({ fetchImpl: changedIdentity });
+  await stolen.voice.handleAdmission(grant());
+  await (stolen.voice as any).refreshToken(false);
+  expect(stolen.voice.getLastError()).toBe("invalid_voice_refresh");
+});
+
 test("Agora/token endpoint outage remains a voice-only error", async () => {
   const fetchImpl = jest.fn(async () => {
     throw Object.assign(new Error("network details"), {
