@@ -773,3 +773,26 @@ voice`).
   credential gate; mocked adapters are not reported as live provider proof.
   This milestone changes no Core runtime code. Core document/block integration
   remains Player Profile M2/M4 work.
+
+## 2026-07-21 - External Player Profile M2 document contract
+
+- Player Profile commit `703dc35` implements game-scoped internal credentials,
+  atomic field/achievement schema registration, and the exact document and
+  blocked-status endpoints expected by Core's M6 client.
+- Its real-PostgreSQL integration invokes Core's shipped
+  `scripts/m2/runtime/player-profile-client.cjs` and passes default hydration,
+  64 KiB enforcement, wrong-type/undeclared-field rejection, reconnect
+  persistence, schema upgrade, and cross-player/game isolation.
+- Game-defined achievement state lives inside the same persistent document and
+  enforces declared IDs, schema-bound targets, monotonic progress, and
+  irreversible unlocks. The companion GDevelop extension supplies the five M2
+  achievement operations with server-only pre-mutation guards.
+- The native amendment's Step 0 is only partially proven: GDevelop 5.6.274
+  imports the Cordova dependency and a pinned standalone Cordova Android APK
+  compiles with the plugin, but no Android device/emulator is connected and
+  GDevelop Cordova export is UI-only. Production Android Google/Facebook SDK
+  work remains intentionally gated until a GDevelop-produced APK calls the
+  spike on-device.
+- Core required no runtime change. Its once-future M2 document integration is
+  now executable; the Player Profile M4 blocked/moderation administration flow
+  remains separate future work.
