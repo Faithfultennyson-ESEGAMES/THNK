@@ -886,3 +886,22 @@ voice`).
 - Remaining external gate: a GDevelop export/device pass over the four new
   extension functions and a live-Agora two-device audible-migration check;
   the structural halves are fully proven above.
+
+## 2026-07-21 - Real live-Agora proof for the voice channel patch
+
+- THNK Matchmaking's `test:voice:channels:agora` (commit `62445b9`) closed
+  the last structural gap in the dynamic-voice-channel patch: it drives
+  this exact `session-manager.cjs`'s `Set Voice Channel` path with two
+  real headless-Chrome clients against the live Agora cloud using real
+  credentials, not mocked bookkeeping. Both clients mutually publish and
+  subscribe real (fake-device) audio tracks on the default channel; after
+  a real reassignment through Matchmaking's reissue endpoint, the browser
+  migrates precisely as `AgoraSessionVoice.ts`'s refresh-driven leave/join
+  logic specifies, and Agora's own infrastructure — not this code's
+  bookkeeping — is what proves the original channel-mate stops receiving
+  them while a new channel-mate does.
+- The remaining external gate is now narrower and precise: a GDevelop
+  editor import/export pass over the four new extension functions, and a
+  physical two-device audible check. Runtime and network correctness for
+  dynamic voice channels, server time, and the generic change event are
+  now fully proven at the code level.
