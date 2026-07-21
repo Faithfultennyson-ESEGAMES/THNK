@@ -817,3 +817,22 @@ voice`).
   Console/Meta app registration, tester accounts, and credentials; the Google
   popup seen from a fake compile-only project ID is not counted as success.
 - Core requires no code change for this implementation.
+
+## 2026-07-21 - External Player Profile M2.4 generic ranked queries
+
+- Player Profile implementation commit: `d7b5741492fa96027d9aa71939f462191634eb50`.
+- Added authenticated, game-scoped rankings over any numeric field registered
+  in a Player Profile document schema, including nested field paths and direct
+  own-rank lookup. This is generic infrastructure, not an XP-specific feature.
+- A normalized PostgreSQL numeric projection is backfilled by migration and
+  updated in the same transaction as authoritative document load/save/schema
+  operations. Ascending/descending indexes, bounded 100-player requests,
+  deterministic competition ties, and explicit unranked results are covered.
+- GDevelop Player Profile extension 0.4.0 provides async list/own-rank actions,
+  loaded/ranked conditions, result/status/error expressions, and stale-response
+  protection. GDevelop Desktop 5.6.274 imported all 26 functions while retaining
+  the Android Cordova dependency.
+- Strict typecheck, 20 tests, production build, all M0-M2 regressions, the new
+  real-PostgreSQL M2.4 integration, and the 79-package zero-vulnerability audit
+  pass. Core requires no runtime change because its existing authoritative
+  document writes are the source feeding the ranking projection.
