@@ -734,3 +734,21 @@ voice`).
   zero known vulnerabilities. Production Player Profile certification remains
   a named future external gate; Matchmaking currently exercises its exact API
   contract through the stub by project design.
+
+## 2026-07-21 - External Player Profile M0 identity baseline
+
+- Initialized the separate `THNK-PlayerProfile` repository and completed M0 on
+  branch `player-profile/m0-baseline`. It owns canonical UUID player identity
+  and durable Postgres records without moving identity state into Core or
+  Matchmaking.
+- Exact implementation commit `de5975d` provides transactional email/provider
+  identity creation, Argon2id passwords, case-insensitive database uniqueness,
+  HS256 cookie/Bearer sessions, authenticated `/me`, migrations, readiness,
+  and PII/credential-redacted logs.
+- A no-Git-metadata fresh checkout used exact Node 24.18.0, Yarn 1.22.22, and a
+  real PostgreSQL 17.8 container. Frozen install, four tests, typecheck, build,
+  M0 integration, concurrent duplicate-registration arbitration, and the
+  79-package zero-vulnerability production audit passed.
+- Core's M6 document/block contracts remain future Player Profile M2/M4 work;
+  M0 deliberately establishes identity plumbing without pretending those
+  internal APIs already exist.
