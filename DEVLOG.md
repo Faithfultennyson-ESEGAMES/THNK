@@ -752,3 +752,24 @@ voice`).
 - Core's M6 document/block contracts remain future Player Profile M2/M4 work;
   M0 deliberately establishes identity plumbing without pretending those
   internal APIs already exist.
+
+## 2026-07-21 - External Player Profile M1 OAuth identity linking
+
+- Player Profile implementation commit `3b31481` adds server-verified Google,
+  Google Play Games, and Facebook adapters plus safe canonical-account linking.
+  Browser flows use opaque browser-bound single-use state; Google adds nonce
+  and S256 PKCE. Play Games resolves its own authenticated player ID, while
+  Facebook app/token/profile IDs must agree and its email remains unverified.
+- Automatic linking requires a provider-verified email that maps through
+  exactly one already verified identity. Unverified email never silently
+  merges accounts; explicit links require a valid Player Profile session, and
+  an identity owned by another player cannot be moved.
+- Exact source archive SHA-256
+  `58262c6cf71205b1788db5d48d5a9b5343d8458874513f12ff94ca8e8bb2f456`
+  passed a fresh frozen install on Node 24.18.0/Yarn 1.22.22, typecheck, four
+  unit/security tests, build, M0 regression, real-PostgreSQL M1 adversarial
+  integration, and a 79-package audit with zero known vulnerabilities.
+- Real Google/Play Games/Facebook sandbox callbacks remain an explicit external
+  credential gate; mocked adapters are not reported as live provider proof.
+  This milestone changes no Core runtime code. Core document/block integration
+  remains Player Profile M2/M4 work.
