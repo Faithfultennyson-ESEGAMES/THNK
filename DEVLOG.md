@@ -905,3 +905,18 @@ voice`).
   physical two-device audible check. Runtime and network correctness for
   dynamic voice channels, server time, and the generic change event are
   now fully proven at the code level.
+
+## 2026-07-21 - Voice channel patch fresh-checkout verification
+
+- Archived exact implementation commit `bc6c117` without Git metadata; the
+  source archive SHA-256 was
+  `a2a9ceb75a8fe456732bc162e60251fa155bbaad98626256a1a33bc8a7b6eb9c`.
+- A separate clean directory used exact Node 24.18.0 and Yarn 1.22.22.
+  Frozen install (which regenerates the protocol via `postinstall`),
+  strict typecheck, and all 82 Jest tests passed. THNK Matchmaking's exact
+  fresh commit `62445b9` was staged as the cross-repo sibling for its
+  `test:voice:channels:core` and `test:voice:channels:agora` gates against
+  this fresh Core runtime, both of which passed.
+- M7 is complete with this patch layered on top; the disposable directory
+  under `D:\CodexTools\THNK-v1\voice-patch-fresh` is outside the
+  repository.
