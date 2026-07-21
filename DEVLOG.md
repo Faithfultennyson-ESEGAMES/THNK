@@ -797,3 +797,23 @@ voice`).
 - Core required no runtime change. Its once-future M2 document integration is
   now executable; the Player Profile M4 blocked/moderation administration flow
   remains separate future work.
+
+## 2026-07-21 - External Player Profile M2.3 Android-native provider bridge
+
+- Player Profile implementation commit: `53c6b698ead6926ec8ac919598726ebbc7efa832`.
+- Player Profile implements a Cordova Android bridge pinned to Play Games
+  Services v2 21.0.0 and Facebook Login 18.3.0. The same GDevelop Google and
+  Facebook actions select native Android or retain the M1 browser redirects on
+  Web/PC. Google returns a one-time server auth code; Facebook uses its distinct
+  native access-token route. Provider secrets remain server-only.
+- GDevelop Desktop 5.6.274 imports the generated production extension with its
+  Cordova dependency intact. Cordova Android 15 compiles both native SDKs, and
+  the Infinix X6880 receives the stable fail-closed native configuration error.
+  Google Play Games profile-creation prompting is suppressed until the game
+  deliberately requests login.
+- Strict typecheck, 15 tests, build, M0/M1 regressions, real-PostgreSQL M2
+  contract/native-CORS gate, and the 79-package zero-vulnerability production
+  audit pass. Live Google/Facebook success still requires the external Play
+  Console/Meta app registration, tester accounts, and credentials; the Google
+  popup seen from a fake compile-only project ID is not counted as success.
+- Core requires no code change for this implementation.
