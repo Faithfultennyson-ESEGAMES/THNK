@@ -1,5 +1,9 @@
 /// <reference path="../types/global.d.ts"/>
 import { geckos, type ClientChannel } from "@geckos.io/client";
+import {
+  endpointPort,
+  normalizeGeckosEndpoint,
+} from "adapters/geckos-client-endpoint";
 import { sessionVoice, type VoiceGrant } from "voice/AgoraSessionVoice";
 const logger = new gdjs.Logger("THNK - Geckos.io Adapter");
 
@@ -7,13 +11,14 @@ THNK.GeckosClientAdapter = class GeckosClientAdapter extends (
   THNK.ClientAdapter
 ) {
   ip: string;
-  port: number;
+  port: number | null;
   authorization?: string;
   connection: ClientChannel | null = null;
-  constructor(ip: string, port: number, admissionToken?: string) {
+  constructor(ip: string, port: number | null, admissionToken?: string) {
     super();
-    this.ip = `http://${ip}`;
-    this.port = port;
+    const endpoint = normalizeGeckosEndpoint(ip, port);
+    this.ip = endpoint.url;
+    this.port = endpoint.port;
     const injectedToken = (
       globalThis as typeof globalThis & {
         THNK_ADMISSION_TOKEN?: string;
@@ -32,7 +37,7 @@ THNK.GeckosClientAdapter = class GeckosClientAdapter extends (
   async prepare(): Promise<void> {
     this.connection = geckos({
       url: this.ip,
-      port: this.port,
+      ...(this.port === null ? {} : { port: this.port }),
       label: "THNK",
       authorization: this.authorization,
     });
@@ -84,6 +89,6 @@ THNK.GeckosClientAdapter = class GeckosClientAdapter extends (
   }
 
   getServerPort() {
-    return this.port;
+    return endpointPort({ url: this.ip, port: this.port });
   }
 };

@@ -2,6 +2,8 @@ const {
   MatchmakingAuthorityClient,
   validateBaseUrl,
 } = require("../../scripts/m2/runtime/matchmaking-authority-client.cjs");
+const fs = require("fs");
+const path = require("path");
 
 const identity = {
   gameId: "game-1",
@@ -80,5 +82,24 @@ test("Authority pull URL rejects plaintext public services but supports explicit
   );
   expect(validateBaseUrl("http://192.168.1.196:9300", true)).toBe(
     "http://192.168.1.196:9300"
+  );
+});
+
+test("GDevelop can feed a matchmaking assignment URL directly to Geckos", () => {
+  const extension = JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, "../../extensions/THNK_GeckosClient.json"),
+      "utf8"
+    )
+  );
+  const action = extension.eventsFunctions.find(
+    ({ name }) => name === "ConnectToServerUrlWithToken"
+  );
+  expect(action.parameters.map(({ name }) => name)).toEqual([
+    "ServerUrl",
+    "AdmissionToken",
+  ]);
+  expect(action.events[0].inlineCode.join("\n")).toContain(
+    'eventsFunctionContext.getArgument("ServerUrl"),\n        null,'
   );
 });

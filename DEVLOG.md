@@ -961,3 +961,15 @@ voice`).
   the committed extension artifacts. Dedicated production claim, dev
   registration, solo mode, Profile fail-closed, and ephemeral fallback each
   have named independent coverage.
+
+## 2026-07-22 - Matchmaking assignment URL client action
+
+- Added `THNK_GeckosClient::ConnectToServerUrlWithToken` so a GDevelop Client
+  can feed the complete `gameServerUrl` and signed admission token from
+  `match.found` directly into Core. This closes the integration mismatch where
+  the previous action required a separately parsed host and port.
+- Geckos endpoint normalization now preserves HTTPS, an explicit URL port, and
+  an optional reverse-proxy path. The legacy host-plus-port action remains
+  compatible. Credentials, query strings, and fragments are rejected.
+- Added pure endpoint tests plus a structural extension test. Strict typecheck,
+  all 94 tests across 22 suites, and the complete extension build pass.
