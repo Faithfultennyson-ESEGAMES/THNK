@@ -920,3 +920,16 @@ voice`).
 - M7 is complete with this patch layered on top; the disposable directory
   under `D:\CodexTools\THNK-v1\voice-patch-fresh` is outside the
   repository.
+
+## 2026-07-22 - README refreshed to the server-platform state
+
+- Replaced the inherited upstream fork `README.md` (which was still just the
+  original THNK project's banner, links, and all-contributors table) with one
+  that describes what this repository actually is: the server-authoritative
+  THNK platform (M0-M7 plus the dynamic-voice patch), the per-match headless
+  authority export and `bin/thnk.js` operator CLI, and the three-service split
+  across Core, the sibling THNK Player Profile, and THNK Matchmaking.
+- Deliberately preserved upstream attribution: the AGPL license, the original
+  author/credits, the contributors table, and the thnk.cloud links are kept
+  under an "Upstream & credits" section rather than removed. No code changed;
+  documentation only.

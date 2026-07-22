@@ -2,9 +2,166 @@
 
 ![The THNK Framework Banner](./banner.png "He do be thonkin")
 
-An authoritative multiplayer games framework for the FLOSS engine GDevelop.
+An authoritative multiplayer games framework for the FLOSS engine
+[GDevelop](https://gdevelop.io/). THNK lets a GDevelop project run its game
+logic on a trusted server that owns the authoritative state, while clients send
+input and render synchronized objects — so cheating a client cannot change what
+actually happened in the match.
 
-## Links
+> This repository is a **server-platform build of THNK**: the upstream THNK
+> framework hardened into a deployable, server-authoritative platform with a
+> headless per-match server export, an operator CLI, and two companion backend
+> services (identity and matchmaking). It is based on the original
+> [THNK by Arthur "arthuro555" Pacaud](https://github.com/arthuro555/THNK) and
+> is distributed under the same AGPL-3.0 license. See
+> [Upstream & credits](#upstream--credits).
+
+## What this repository provides
+
+The platform is built and verified in milestones (see `DEVLOG.md` and
+`docs/project/` for the full record). M0 through M7 plus a dynamic-voice patch
+are complete:
+
+- **Authoritative runtime** — the THNK GDevelop extension (`extensions/THNK.json`)
+  runs the same game scene as either a dedicated server or a client, with
+  server-owned object synchronization, player ownership, and rejection of
+  illegal client-side edits (`M1`, `fixtures/m1-remote-authority`).
+- **Headless per-match server export** — `bin/thnk.js` exports a GDevelop
+  project's server logic into a self-contained bundle and runs it as one
+  isolated authority process per session (a hidden Electron renderer, no visible
+  window), instead of requiring a desktop GDevelop preview (`M2`,
+  `docs/project/M2-SERVER-EXPORT.md`).
+- **External matchmaking bridge** — a signed control/handoff contract so an
+  external matchmaker can create sessions, issue per-player RS256 admission
+  tokens, and receive replay-safe lifecycle webhooks (`M3`).
+- **In-session voice** — per-player Agora voice grants with dynamic channel
+  assignment and server-controlled channel separation within a session (`M4`
+  and the dynamic-voice patch, `docs/project/PATCH-DYNAMIC-VOICE-AND-GENERIC-TOOLS.md`).
+- **Multi-authority & admission hardening**, **cross-service integration
+  hooks**, and a **product-hardening / release-candidate** pass with secret
+  scanning, a production dependency audit, and headless smoke gates (`M5`–`M7`).
+
+### The three THNK services
+
+THNK is deliberately split into three independently deployable pieces. This
+repository is the first one; the other two live in sibling repositories.
+
+| Service | This repo | Role |
+| --- | --- | --- |
+| **THNK Core** (here) | `THNK/v1` | The GDevelop framework + the per-match authoritative server exported from a game project. Not always-on: one process per live match. |
+| **THNK Player Profile** | `THNK/PlayerProfile` | Always-on identity & durable player data: email/OAuth login, sessions, friends, direct messages, moderation, rankings, achievements. |
+| **THNK Matchmaking** | `THNK/Matchmaking` | Always-on queueing, parties, private lobbies, realtime social/chat, and Matchmaking-owned voice grants. |
+
+Core stays a per-match process; Player Profile and Matchmaking are the two
+long-running backends it hands off to and trusts through signed contracts.
+
+## Quick start
+
+```bash
+yarn install --frozen-lockfile   # installs deps and runs protocol codegen
+yarn ts                          # TypeScript typecheck
+yarn test                        # jest unit/integration tests
+yarn build                       # build THNK + adapters and inject into extensions/
+```
+
+Then either import `extensions/THNK.json` into your own GDevelop project, or run
+the reference remote-authority fixture end to end:
+
+```bash
+yarn build
+yarn fixture:m1:validate
+yarn fixture:m1:prepare        # generates server/client copies under .generated/
+yarn fixture:m1:export-client
+```
+
+See `fixtures/m1-remote-authority/README.md` for the full run procedure (one
+GDevelop preview as the authority, others as clients) and
+`docs/production/README.md` for the supported project-to-production path using
+the `thnk server` CLI.
+
+## Documentation
+
+- **`docs/production/`** — the supported deployment path: `README.md`,
+  `CONFIGURATION.md`, `COMPATIBILITY.md`, `THREAT-MODEL.md`, `TROUBLESHOOTING.md`.
+- **`docs/project/`** — the per-milestone design and verification records
+  (`M0-BASELINE.md` … `M7-RELEASE-CANDIDATE.md`, plus the dynamic-voice patch and
+  the `adr/` decisions).
+- **`DEVLOG.md`** — the chronological implementation log, including the external
+  Matchmaking and Player Profile integration gates run against this Core.
+- **`THNK-Implementation-Plan.md`**, **`THNK-Server-Platform-Blueprint.md`** —
+  the platform plan and blueprint; the sibling services have their own plans
+  (`THNK-Matchmaking-Implementation-Plan.md`,
+  `THNK-PlayerProfile-Implementation-Plan.md`).
+- Upstream framework documentation lives at
+  [thnk.cloud/docs](https://thnk.cloud/docs/getting-started/) (concepts and the
+  GDevelop-facing API remain compatible with upstream).
+
+## The `thnk` CLI
+
+`bin/thnk.js` is the operator entry point for the exported authority server:
+
+```bash
+node ./bin/thnk.js server validate --bundle ./.generated/<m>/server-bundle
+node ./bin/thnk.js server run      --bundle ./.generated/<m>/server-bundle
+```
+
+`server validate` checks a server bundle's integrity and configuration;
+`server run` launches one headless authority process for a session. See
+`docs/production/CONFIGURATION.md` for the environment contract (control token,
+lifecycle callbacks, Player Profile and Agora configuration).
+
+## Contributing
+
+### Installing
+
+To install all dependencies, run `yarn`. You may use `npm`, but note that only a
+yarn lockfile will be provided and accepted in PRs. If you have disabled
+postinstall scripts, run `yarn generate-protocol` to run the code generator on
+the flatbuffer files.
+
+### Building
+
+Run `yarn build` to execute the full build pipeline, or build individual parts
+with the other `build:*` scripts in `package.json`. `yarn build:thnk` and
+`yarn build:adapters` output a bundle to `dist/`; `yarn build:extensions` inserts
+those into the THNK extensions in `extensions/`.
+
+To test changes to the GDevelop-facing surface, import the extension into
+GDevelop. If you change the extension itself, export it back to the `extensions`
+folder before committing.
+
+### Submitting changes
+
+Before submitting a PR, make sure your code builds and fully functions within
+the extension and passes both the TypeScript and jest checks: `yarn ts && yarn
+test`. Make sure the extensions in `extensions/` are regenerated with the latest
+code (`yarn build` if in doubt). For platform/server changes, also run the
+relevant `fixture:*` and `ci:*` gates described in `docs/production/README.md`.
+
+### File structure
+
+- `extensions` — the GDevelop extension files. Most logic lives in `code`, but
+  the extensions declare the actions/conditions/expressions and embed the built
+  THNK bundle.
+- `bin` — the `thnk` operator CLI (`thnk.js`).
+- `protocol` — FlatBuffers protocol definitions. Anything sent between server and
+  client **must** be defined as a FlatBuffer `ServerMessage` or `ClientMessage`;
+  run `yarn generate-protocol` after changing them.
+- `code` — the THNK extension TypeScript. Imports are relative to this directory
+  (`import "server"` → `code/server`). Contains `server`, `client`, `adapters`,
+  `types`, and `utils`.
+- `fixtures` — runnable reference projects (`m1-remote-authority`).
+- `examples` — the deployment `container` and the `stub-matchmaker` used by the
+  cross-service gates.
+- `scripts` — build, protocol codegen, and the per-milestone fixture/CI scripts.
+- `docs` — the docusaurus site plus the `production/` and `project/` docs.
+- `types` — GDJS type definitions.
+
+## Upstream & credits
+
+THNK was created by Arthur "arthuro555" Pacaud and its contributors. This
+repository builds on that work; the framework concepts, GDevelop integration,
+and protocol design originate upstream. Please support the original project:
 
 - [🌐 Website](https://thnk.cloud/)
 - [📰 Introduction blog post](https://bit.ly/thnk-introduction)
@@ -12,9 +169,7 @@ An authoritative multiplayer games framework for the FLOSS engine GDevelop.
 - [💖 Support the project](https://ko-fi.com/arthuro555)
 - [📄 Documentation](https://thnk.cloud/docs/getting-started/)
 
-## Contributors
-
-Thanks to all the contributors to THNK! Here is the full list of all contributors of all kinds to the project:
+Thanks to all the contributors to THNK!
 
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 [![All Contributors](https://img.shields.io/badge/all_contributors-8-orange.svg?style=flat-square)](#contributors-)
@@ -45,40 +200,7 @@ Thanks to all the contributors to THNK! Here is the full list of all contributor
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-## Contributing
+## License
 
-### Installing
-
-To install all dependencies, run `yarn`. You may use `npm`, but note that only a yarn lockfile will be provided and accepted in PRs.
-If you have disabled postinstall scripts, run `yarn generate-protocol` to run the code generator on the flatbuffer files.
-
-### Building
-
-Run `yarn build` to execute the full build pipeline. You can also build individual parts with the other build scripts in package.json:
-
-Building THNK with `yarn build:thnk` and the adapters with `yarn build:adapters` outputs a bundle to the `dist` folder. `yarn build:extensions` automatically inserts those into the THNK extensions in `extensions`.
-
-To test your changes, import the extension with your changes into GDevelop. If you make changes to the extension itself, don't forget to export it back to the `extensions` folder.
-
-### Submitting changes
-
-Before submitting a PR, make sure that your code builds & fully functions within the extension, and that it passes both typescript & jest tests.
-Run `yarn ts && yarn test` to run both checks.
-Make sure the extensions in `extensions` are properly generated with the latest version of your code. In case of doubts, run `yarn build` again before committing.
-
-### Understanding the file structure
-
-There are a few main folders that you need to keep in mind while contributing:
-
-- `extensions` - Contains the GDevelop extensions files. While most of the important code is in `code`, the extensions themselves need to be modified to add actions, conditions, etc. You also need them to actually use the built THNK code.
-- `protocol` - Contains FlatBuffers protocol definitions. Anything that transits between the server and client **must** be defined through a FlatBuffer `ServerMessage` or `ClientMessage`, depending on which side will be sending that message.
-  - After changing a file there, you need to run `yarn generate-protocol` to run codegen for the FlatBuffers files before using the modified interfaces in `code`
-- `types` - GDJS type definitions. They were generated automatically with TSC.
-- `docs` - The docusaurus website and documentation.
-- `scripts` - A few scripts used for building.
-- `code` - Contains all the THNK extension's typescript code. All imports are relative to this directory: `import "server";` would import `code/server`.
-  - `server` - All the server-relevant code.
-  - `client` - All the client-relevant code.
-  - `adapters` - Contains the different adapters' implementations.
-  - `types` - Useful type definitions: `global.d.ts` defines the `THNK` global namespace and `thnk.d.ts` overrides GDevelop type definitions with the additional properties THNK adds.
-  - `utils` - Misc. Code that is relevant for both server and client.
+THNK is licensed under AGPL-3.0-only. Copyright (C) 2023 Arthur "arthuro555"
+Pacaud and contributors. See `LICENSE.md`.
