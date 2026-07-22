@@ -293,6 +293,13 @@ const writeBundleFiles = (bundlePath, project, catalog, compatibility) => {
       `THNK_AUTHORITY_ID=\n` +
       `THNK_MAP_ID=\n` +
       `THNK_BRIDGE_ENABLED=false\n` +
+      `THNK_MATCHMAKING_URL=\n` +
+      `THNK_MATCHMAKING_AUTHORITY_TOKEN=\n` +
+      `THNK_MATCHMAKING_TIMEOUT_MS=5000\n` +
+      `THNK_ALLOW_INSECURE_MATCHMAKING_URL=false\n` +
+      `THNK_MODE_ID=\n` +
+      `THNK_DEV_AUTHORITY_REGISTER=false\n` +
+      `THNK_GAME_SERVER_URL=\n` +
       `THNK_CONTROL_HOST=127.0.0.1\n` +
       `THNK_CONTROL_PORT=${getDefaultControlPort(catalog.port)}\n` +
       `THNK_CONTROL_TOKEN=\n` +
@@ -305,6 +312,8 @@ const writeBundleFiles = (bundlePath, project, catalog, compatibility) => {
       `THNK_PLAYER_PROFILE_TOKEN=\n` +
       `THNK_PLAYER_PROFILE_TIMEOUT_MS=3000\n` +
       `THNK_ALLOW_INSECURE_PLAYER_PROFILE_URL=false\n` +
+      `THNK_PLAYER_PROFILE_POLICY=fail-closed\n` +
+      `THNK_DEV_MODE=false\n` +
       `THNK_VOICE_ENABLED=false\n` +
       `AGORA_APP_ID=\n` +
       `AGORA_APP_CERTIFICATE=\n` +
@@ -332,16 +341,17 @@ const writeBundleFiles = (bundlePath, project, catalog, compatibility) => {
       `The authoritative Geckos server listens on port ${catalog.port}. ` +
       "The Electron window is created hidden; stop with SIGINT or SIGTERM. Shutdown drains the active session and has a configurable 30-second safety deadline.\n\n" +
       "## Matchmaking bridge\n\n" +
-      "The bridge is disabled by default, preserving direct THNK connections. To enable it, copy the values from `config.example.env` into the server environment, set `THNK_BRIDGE_ENABLED=true`, and provide independently generated random values of at least 32 characters for `THNK_CONTROL_TOKEN` and `THNK_WEBHOOK_SECRET`. Never place either secret in a game client.\n\n" +
+      "The bridge is disabled by default, preserving direct THNK connections. For production, set `THNK_BRIDGE_ENABLED=true`, `THNK_MATCHMAKING_URL`, the orchestrator-issued `THNK_MATCHMAKING_AUTHORITY_TOKEN`, and `THNK_WEBHOOK_SECRET`. The Authority claims its session from Matchmaking and acknowledges readiness; Matchmaking never opens a connection to the Authority. `THNK_CONTROL_TOKEN` is required only for the legacy private/manual control API when outbound pull is not configured. Never place any server credential in a game client.\n\n" +
+      "For developer routing, also set `THNK_DEV_AUTHORITY_REGISTER=true` and `THNK_GAME_SERVER_URL` to the address this developer's Clients can reach. Matchmaking returns that address beside each signed admission token but does not attempt to reach it, so hosted Matchmaking requires no LAN, VPN, or tunnel to the developer Authority.\n\n" +
       "Runtime logs are newline-delimited JSON. Keep `THNK_LOG_LEVEL=info` in production and correlate lifecycle records with `sessionId`, `playerId`, `connectionId`, and `eventId`; authorization material, tokens, capabilities, documents, and certificate fields are redacted.\n\n" +
       `The v1 control API defaults to \`127.0.0.1:${getDefaultControlPort(
         catalog.port
       )}\`. Bind its control routes only to a private or otherwise protected interface. Player admission JWTs are sent to Geckos in the HTTP \`Authorization\` header, never in a URL. Plain HTTP callback URLs are accepted only for loopback development when \`THNK_ALLOW_INSECURE_CALLBACKS=true\`.\n\n` +
       "`GET /health/live` reports process liveness. `GET /health/ready` reports authority, session, Player Profile, and webhook checks; a configured failed Player Profile dependency makes the process unready. Control, health, and public voice routes have source-address rate limits. Session duration defaults to four hours, after which the process drains and exits.\n\n" +
       "## Player Profile hooks\n\n" +
-      "Set `THNK_PLAYER_PROFILE_URL` and the independent service credential `THNK_PLAYER_PROFILE_TOKEN` together to enable blocked-player preflight and persistent player documents. The URL must use HTTPS outside explicitly enabled loopback development. The Bridge never accepts this URL or credential from a session request.\n\n" +
+      "Set `THNK_PLAYER_PROFILE_URL` and the independent service credential `THNK_PLAYER_PROFILE_TOKEN` together to enable blocked-player preflight and persistent player documents. `THNK_PLAYER_PROFILE_POLICY=fail-closed` is the production default: an unavailable or unconfigured service rejects session preparation/admission. Local development may explicitly use `local-ephemeral-fallback` only together with `THNK_DEV_MODE=true`; documents then exist only in memory for that session and warnings identify every fallback/write. The URL must use HTTPS outside explicitly enabled loopback development. The Bridge never accepts this URL, policy, or credential from a session request.\n\n" +
       "## Agora session voice\n\n" +
-      "Voice is opt-in. For standalone local minting, set `THNK_VOICE_ENABLED=true`, inject `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` as server secrets, and set the public HTTPS `THNK_VOICE_TOKEN_URL` to the externally routed `/v1/voice/token` endpoint. A matchmaker may instead supply one validated, matchmaker-refreshed grant per roster member without any bundle-local Agora credentials. Expose only the voice token route to game clients; keep control routes private. The App Certificate must never be placed in a client export, URL, log, or source file. Loopback HTTP is available only for development with `THNK_ALLOW_INSECURE_VOICE_TOKEN_URL=true`.\n"
+      "Voice is opt-in. For standalone local minting, set `THNK_VOICE_ENABLED=true`, inject `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` as server secrets, and set the public HTTPS `THNK_VOICE_TOKEN_URL` to the externally routed `/v1/voice/token` endpoint. With outbound Matchmaking configured, the Authority pulls a player-scoped grant after verifying that player's signed admission token; neither the private session envelope nor `match.found` carries an unsigned voice grant. Expose only the voice token route to admitted game clients; keep control routes private. The App Certificate must never be placed in a client export, URL, log, or source file. Loopback HTTP is available only for development with `THNK_ALLOW_INSECURE_VOICE_TOKEN_URL=true`.\n"
   );
 };
 
@@ -565,6 +575,7 @@ const validateBundle = (bundlePath) => {
     "runtime/bundle-identity.cjs",
     "runtime/geckos-bridge.cjs",
     "runtime/jwt-verifier.cjs",
+    "runtime/matchmaking-authority-client.cjs",
     "runtime/player-profile-client.cjs",
     "runtime/rate-limiter.cjs",
     "runtime/session-manager.cjs",

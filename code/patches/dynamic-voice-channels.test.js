@@ -76,6 +76,8 @@ const externalVoiceGrant = (playerId, overrides = {}) => ({
 const manager = (overrides = {}) =>
   new SessionManager({
     enabled: true,
+    profilePolicy: "local-ephemeral-fallback",
+    devMode: true,
     webhookSecret: "w".repeat(32),
     allowInsecureCallbacks: true,
     fetchImpl: async () => ({ ok: true, status: 204 }),
@@ -84,16 +86,27 @@ const manager = (overrides = {}) =>
     ...overrides,
   });
 
-test("mixed per-player channels are accepted while mixed app ids stay rejected", async () => {
-  const accepted = manager();
+test("pulled per-player channels are accepted while mixed app ids stay voice-only errors", async () => {
+  const participants = [
+    { playerId: "alice", uid: "voice-alice" },
+    { playerId: "bob", uid: "voice-bob" },
+  ];
+  const accepted = manager({
+    authorityClient: {
+      enabled: true,
+      pullVoiceGrant: async ({ playerId }) => ({
+        ...externalVoiceGrant(playerId, {
+          ...(playerId === "alice" ? { channel: "squad-red" } : {}),
+        }),
+        participants,
+      }),
+    },
+  });
   accepted.setGameReady();
-  await accepted.prepareSession(
-    sessionInput({
-      voiceGrants: {
-        alice: externalVoiceGrant("alice", { channel: "squad-red" }),
-        bob: externalVoiceGrant("bob"),
-      },
-    })
+  await accepted.prepareSession(sessionInput());
+  await accepted.authorize(`Bearer ${signToken()}`);
+  await accepted.authorize(
+    `Bearer ${signToken({ playerId: "bob", jti: "voice-token-bob" })}`
   );
   expect(accepted.getPlayerVoiceChannel("alice")).toBe("squad-red");
   expect(accepted.getPlayerVoiceChannel("bob")).toBe(
@@ -101,18 +114,27 @@ test("mixed per-player channels are accepted while mixed app ids stay rejected",
   );
   accepted.endSession("done");
 
-  const rejected = manager();
+  const rejected = manager({
+    authorityClient: {
+      enabled: true,
+      pullVoiceGrant: async ({ playerId }) => ({
+        ...externalVoiceGrant(playerId, {
+          ...(playerId === "bob" ? { appId: "c".repeat(32) } : {}),
+        }),
+        participants,
+      }),
+    },
+  });
   rejected.setGameReady();
-  await expect(
-    rejected.prepareSession(
-      sessionInput({
-        voiceGrants: {
-          alice: externalVoiceGrant("alice", { appId: "c".repeat(32) }),
-          bob: externalVoiceGrant("bob"),
-        },
-      })
-    )
-  ).rejects.toMatchObject({ code: "voice_grants_not_session_isolated" });
+  await rejected.prepareSession(sessionInput());
+  await rejected.authorize(`Bearer ${signToken({ jti: "mixed-app-alice" })}`);
+  const bob = await rejected.authorize(
+    `Bearer ${signToken({ playerId: "bob", jti: "mixed-app-bob" })}`
+  );
+  expect(bob.thnkVoice).toEqual({
+    available: false,
+    errorCode: "voice_grants_not_session_isolated",
+  });
 });
 
 test("externally-granted reassignment reissues through the matchmaker", async () => {
@@ -135,17 +157,22 @@ test("externally-granted reassignment reissues through the matchmaker", async ()
     }
     return { ok: true, status: 204 };
   };
-  const sessionManager = manager({ fetchImpl });
+  const sessionManager = manager({
+    fetchImpl,
+    authorityClient: {
+      enabled: true,
+      pullVoiceGrant: async ({ playerId }) => ({
+        ...externalVoiceGrant(playerId),
+        participants: [
+          { playerId: "alice", uid: "voice-alice" },
+          { playerId: "bob", uid: "voice-bob" },
+        ],
+      }),
+    },
+  });
   sessionManager.setGameReady();
-  await sessionManager.prepareSession(
-    sessionInput({
-      voiceGrants: {
-        alice: externalVoiceGrant("alice"),
-        bob: externalVoiceGrant("bob"),
-      },
-    })
-  );
-  const admission = sessionManager.authorize(`Bearer ${signToken()}`);
+  await sessionManager.prepareSession(sessionInput());
+  const admission = await sessionManager.authorize(`Bearer ${signToken()}`);
   sessionManager.playerConnected(admission.thnkIdentity, "transport-1");
 
   const updates = [];
@@ -153,9 +180,7 @@ test("externally-granted reassignment reissues through the matchmaker", async ()
   const grant = await sessionManager.setVoiceChannel("alice", "squad-red");
   expect(grant.channel).toBe("squad-red");
   expect(sessionManager.getPlayerVoiceChannel("alice")).toBe("squad-red");
-  expect(sessionManager.getPlayerVoiceChannel("bob")).toBe(
-    "session-voice-patch-channel"
-  );
+  expect(sessionManager.getPlayerVoiceChannel("bob")).toBe("");
   expect(refreshRequests).toHaveLength(1);
   expect(refreshRequests[0].options.headers.authorization).toBe(
     `Bearer ${"a".repeat(43)}`
@@ -181,17 +206,22 @@ test("externally-granted reassignment reissues through the matchmaker", async ()
       String(url).includes("/v1/voice/refresh")
         ? { ok: false, status: 429, json: async () => ({}) }
         : { ok: true, status: 204 },
+    authorityClient: {
+      enabled: true,
+      pullVoiceGrant: async ({ playerId }) => ({
+        ...externalVoiceGrant(playerId),
+        participants: [
+          { playerId: "alice", uid: "voice-alice" },
+          { playerId: "bob", uid: "voice-bob" },
+        ],
+      }),
+    },
   });
   throttled.setGameReady();
-  await throttled.prepareSession(
-    sessionInput({
-      voiceGrants: {
-        alice: externalVoiceGrant("alice"),
-        bob: externalVoiceGrant("bob"),
-      },
-    })
+  await throttled.prepareSession(sessionInput());
+  const throttledAdmission = await throttled.authorize(
+    `Bearer ${signToken({ jti: "throttled-token" })}`
   );
-  const throttledAdmission = throttled.authorize(`Bearer ${signToken()}`);
   throttled.playerConnected(throttledAdmission.thnkIdentity, "transport-2");
   await expect(
     throttled.setVoiceChannel("alice", "squad-red")

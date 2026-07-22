@@ -31,9 +31,11 @@ are complete:
   isolated authority process per session (a hidden Electron renderer, no visible
   window), instead of requiring a desktop GDevelop preview (`M2`,
   `docs/project/M2-SERVER-EXPORT.md`).
-- **External matchmaking bridge** — a signed control/handoff contract so an
-  external matchmaker can create sessions, issue per-player RS256 admission
-  tokens, and receive replay-safe lifecycle webhooks (`M3`).
+- **Outbound matchmaking bridge** — a signed claim/handoff contract where an
+  Authority asks Matchmaking for its assigned session, acknowledges readiness,
+  verifies Client-relayed per-player RS256 admission tokens, and sends
+  replay-safe lifecycle webhooks. Matchmaking never needs network access to the
+  Authority (`M3` plus the outbound-networking patch).
 - **In-session voice** — per-player Agora voice grants with dynamic channel
   assignment and server-controlled channel separation within a session (`M4`
   and the dynamic-voice patch, `docs/project/PATCH-DYNAMIC-VOICE-AND-GENERIC-TOOLS.md`).
@@ -54,6 +56,15 @@ repository is the first one; the other two live in sibling repositories.
 
 Core stays a per-match process; Player Profile and Matchmaking are the two
 long-running backends it hands off to and trusts through signed contracts.
+
+For local work, `THNK_Local::StartSoloMode` runs the real THNK server and client
+stacks in one preview process. A registered dev Authority can instead use a
+shared hosted Matchmaking service: Matchmaking returns the dev Authority's
+Client-reachable address beside the signed admission token, so no tunnel or
+shared LAN with Matchmaking is needed. Production orchestrators provision the
+same exported Authority with its production Matchmaking credential; it claims
+sessions outbound. Gameplay voice grants are pulled server-to-server only after
+admission and are never relayed through the Client.
 
 ## Quick start
 
@@ -107,8 +118,9 @@ node ./bin/thnk.js server run      --bundle ./.generated/<m>/server-bundle
 
 `server validate` checks a server bundle's integrity and configuration;
 `server run` launches one headless authority process for a session. See
-`docs/production/CONFIGURATION.md` for the environment contract (control token,
-lifecycle callbacks, Player Profile and Agora configuration).
+`docs/production/CONFIGURATION.md` for the environment contract (outbound
+Matchmaking credential, lifecycle callbacks, Player Profile policy, and Agora
+configuration).
 
 ## Contributing
 

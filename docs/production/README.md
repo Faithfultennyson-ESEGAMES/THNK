@@ -63,10 +63,12 @@ node node_modules/electron/install.js
 Electron 43 exposes its platform download as an explicit installer command;
 dependency installation alone does not place the runtime binary in `dist/`.
 
-Set the variables described in [configuration](CONFIGURATION.md). At minimum,
-enable the Bridge and provide three independently generated 32+ character
-values for the control, webhook, and Player Profile credentials. For the local
-stub only, select `duel`, set the profile URL to
+Set the variables described in [configuration](CONFIGURATION.md). Production
+Authorities use `THNK_MATCHMAKING_URL` and the orchestrator-issued
+`THNK_MATCHMAKING_AUTHORITY_TOKEN` to claim sessions outbound; Matchmaking does
+not need an Authority route. The older local stub below deliberately exercises
+the still-supported private/manual control API. For that stub only, select
+`duel`, set the profile URL to
 `http://127.0.0.1:9210/`, and enable both loopback HTTP callback/profile
 switches. The bundle terminal therefore needs:
 
@@ -86,7 +88,7 @@ Use your shell's environment syntax (`set NAME=value` in Command Prompt,
 three generated development values in the stub terminal; never reuse them in
 production.
 
-Start the bundle first with `yarn start`. It becomes live on the control port
+Start the bundle first with `yarn start`. In this legacy stub example it becomes live on the control port
 and waits for an assignment. In another terminal, from the repository root,
 start the development stub with the same credential values:
 

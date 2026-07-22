@@ -1,6 +1,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { spawnSync } = require("child_process");
 const {
   FORMAT_VERSION,
   findServerAuthorities,
@@ -21,6 +22,18 @@ const makeTemporaryDirectory = () => {
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0))
     fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("all generated server runtime files parse as CommonJS", () => {
+  const runtimeDirectory = path.resolve(__dirname, "../../scripts/m2/runtime");
+  for (const filename of fs.readdirSync(runtimeDirectory)) {
+    if (!filename.endsWith(".cjs")) continue;
+    const result = spawnSync(process.execPath, [
+      "--check",
+      path.join(runtimeDirectory, filename),
+    ]);
+    expect(result.status).toBe(0);
+  }
 });
 
 test("normalizes GDevelop inline function identifiers deterministically", () => {
@@ -145,6 +158,7 @@ test("validates the bundle hash and detects tampering", () => {
     "bundle-identity.cjs",
     "control-server.cjs",
     "jwt-verifier.cjs",
+    "matchmaking-authority-client.cjs",
     "player-profile-client.cjs",
     "rate-limiter.cjs",
     "session-manager.cjs",

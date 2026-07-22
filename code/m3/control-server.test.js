@@ -46,6 +46,8 @@ test("serves authenticated one-session control lifecycle and health", async () =
   let endDrain;
   const manager = new SessionManager({
     enabled: true,
+    profilePolicy: "local-ephemeral-fallback",
+    devMode: true,
     webhookSecret: "w".repeat(32),
     allowInsecureCallbacks: true,
     fetchImpl: async () => ({ ok: true, status: 204 }),
@@ -75,7 +77,7 @@ test("serves authenticated one-session control lifecycle and health", async () =
       checks: {
         authority: "ready",
         session: "absent",
-        playerProfile: "disabled",
+        playerProfile: "ephemeral",
         webhook: "available",
       },
     },
@@ -138,6 +140,8 @@ test("does not start GDevelop until the complete session assignment is valid", a
   const onSessionStart = jest.fn(async () => {});
   const manager = new SessionManager({
     enabled: true,
+    profilePolicy: "local-ephemeral-fallback",
+    devMode: true,
     webhookSecret: "w".repeat(32),
     allowInsecureCallbacks: true,
     fetchImpl: async () => ({ ok: true, status: 204 }),

@@ -13,6 +13,9 @@ const {
   validateExternalGrant,
 } = require("./voice-token-manager.cjs");
 const { PlayerProfileClient } = require("./player-profile-client.cjs");
+const {
+  MatchmakingAuthorityClient,
+} = require("./matchmaking-authority-client.cjs");
 const { structuredLogger } = require("./structured-logger.cjs");
 
 class BridgeError extends Error {
@@ -51,6 +54,9 @@ class SessionManager extends EventEmitter {
     playerDrainTimeoutMs = 3_000,
     voiceManager = new VoiceTokenManager(),
     profileClient = new PlayerProfileClient(),
+    authorityClient = new MatchmakingAuthorityClient(),
+    profilePolicy = "fail-closed",
+    devMode = false,
     runtimeIdentity = {},
     maxSessionDurationMs = 4 * 60 * 60 * 1_000,
     logger = structuredLogger,
@@ -59,13 +65,22 @@ class SessionManager extends EventEmitter {
     this.enabled = enabled;
     this.webhookSecret = webhookSecret;
     this.allowInsecureCallbacks = allowInsecureCallbacks;
-    this.fetchImpl = fetchImpl;
+    this.fetchImpl = fetchImpl || globalThis.fetch;
     this.now = now;
     this.randomUUID = randomUUID;
     this.outboxOptions = outboxOptions;
     this.playerDrainTimeoutMs = playerDrainTimeoutMs;
     this.voiceManager = voiceManager;
     this.profileClient = profileClient;
+    this.authorityClient = authorityClient;
+    if (!["fail-closed", "local-ephemeral-fallback"].includes(profilePolicy))
+      throw new Error("Invalid Player Profile policy.");
+    if (profilePolicy === "local-ephemeral-fallback" && !devMode)
+      throw new Error(
+        "local-ephemeral-fallback requires explicit THNK_DEV_MODE=true."
+      );
+    this.profilePolicy = profilePolicy;
+    this.devMode = devMode;
     this.runtimeIdentity = Object.freeze({ ...runtimeIdentity });
     this.maxSessionDurationMs = Number(maxSessionDurationMs);
     if (
@@ -88,12 +103,17 @@ class SessionManager extends EventEmitter {
     this.documentsByAdmission = new Map();
     this.pendingProfileWrites = new Set();
     this.profileWriteTails = new Map();
+    this.ephemeralDocumentsByPlayer = new Map();
     this.recentViolations = new Map();
     this.sessionCreationPending = false;
     this.maximumDurationTimer = undefined;
     this.sessionDrain = undefined;
     this.dependencyState = {
-      playerProfile: this.profileClient.enabled ? "unknown" : "disabled",
+      playerProfile: this.profileClient.enabled
+        ? "unknown"
+        : this.profilePolicy === "local-ephemeral-fallback"
+          ? "ephemeral"
+          : "unavailable",
     };
   }
 
@@ -198,49 +218,9 @@ class SessionManager extends EventEmitter {
         )
       );
     }
+    if (input.voiceGrants !== undefined)
+      throw new BridgeError("voice_grants_must_be_pulled", 400);
     const voiceGrants = new Map();
-    if (input.voiceGrants !== undefined) {
-      if (
-        !input.voiceGrants ||
-        typeof input.voiceGrants !== "object" ||
-        Array.isArray(input.voiceGrants)
-      )
-        throw new BridgeError("invalid_voice_grants");
-      const suppliedPlayers = Object.keys(input.voiceGrants);
-      if (
-        suppliedPlayers.length !== roster.size ||
-        suppliedPlayers.some((playerId) => !roster.has(playerId))
-      )
-        throw new BridgeError("voice_grants_must_match_roster");
-      try {
-        for (const playerId of roster.keys())
-          voiceGrants.set(
-            playerId,
-            validateExternalGrant(input.voiceGrants[playerId], this.now())
-          );
-      } catch (error) {
-        if (error instanceof VoiceError)
-          throw new BridgeError(error.code, error.status);
-        throw error;
-      }
-      const first = voiceGrants.values().next().value;
-      const voiceUids = new Set();
-      const voiceTokens = new Set();
-      const refreshCapabilities = new Set();
-      for (const grant of voiceGrants.values()) {
-        if (grant.appId !== first.appId)
-          throw new BridgeError("voice_grants_not_session_isolated");
-        if (
-          voiceUids.has(grant.uid) ||
-          voiceTokens.has(grant.token) ||
-          refreshCapabilities.has(grant.refreshCapability)
-        )
-          throw new BridgeError("voice_grants_not_player_isolated");
-        voiceUids.add(grant.uid);
-        voiceTokens.add(grant.token);
-        refreshCapabilities.add(grant.refreshCapability);
-      }
-    }
     if (input.reconnectPolicy && input.reconnectPolicy !== "fresh-token")
       throw new BridgeError("unsupported_reconnect_policy");
 
@@ -270,6 +250,7 @@ class SessionManager extends EventEmitter {
     this.documentsByAdmission.clear();
     this.pendingProfileWrites.clear();
     this.profileWriteTails.clear();
+    this.ephemeralDocumentsByPlayer.clear();
     this.recentViolations.clear();
     clearTimeout(this.maximumDurationTimer);
     this.sessionDrain = undefined;
@@ -363,7 +344,13 @@ class SessionManager extends EventEmitter {
           );
         }
         if (blocked.some(Boolean)) throw new BridgeError("player_blocked", 403);
-      }
+      } else if (this.profilePolicy === "fail-closed")
+        throw new BridgeError("player_profile_unavailable", 503);
+      else
+        this.logger.warn("player_profile.ephemeral_fallback_active", {
+          sessionId: input.sessionId,
+          policy: this.profilePolicy,
+        });
       return this.createSession(input);
     } finally {
       this.sessionCreationPending = false;
@@ -475,7 +462,7 @@ class SessionManager extends EventEmitter {
         )
         .then((document) => {
           this.dependencyState.playerProfile = "available";
-          return this.finishAuthorization(claims, document);
+          return this.finishAuthorization(claims, document, match[1]);
         })
         .catch((error) => {
           this.dependencyState.playerProfile = "unavailable";
@@ -487,10 +474,82 @@ class SessionManager extends EventEmitter {
             503
           );
         });
-    return this.finishAuthorization(claims, {});
+    if (this.profilePolicy === "fail-closed") {
+      this.usedTokenIds.delete(claims.jti);
+      this.pendingByPlayer.delete(claims.playerId);
+      throw new AdmissionError("player_profile_unavailable", 503);
+    }
+    this.logger.warn("player_profile.ephemeral_fallback_active", {
+      sessionId: claims.sessionId,
+      playerId: claims.playerId,
+      policy: this.profilePolicy,
+    });
+    return this.finishAuthorization(
+      claims,
+      structuredClone(this.ephemeralDocumentsByPlayer.get(claims.playerId) || {}),
+      match[1]
+    );
   }
 
-  finishAuthorization(claims, document) {
+  finishAuthorization(claims, document, admissionToken) {
+    if (!this.authorityClient.enabled)
+      return this.completeAuthorization(claims, document);
+    return this.authorityClient
+      .pullVoiceGrant({
+        sessionId: claims.sessionId,
+        playerId: claims.playerId,
+        admissionToken,
+      })
+      .then((input) => {
+        const validated = validateExternalGrant(input, this.now());
+        if (
+          !Array.isArray(input.participants) ||
+          input.participants.length < 1 ||
+          input.participants.some(
+            (participant) =>
+              !validIdentifier(participant?.playerId) ||
+              typeof participant?.uid !== "string" ||
+              participant.uid.length < 1 ||
+              participant.uid.length > 255
+          ) ||
+          new Set(input.participants.map(({ playerId }) => playerId)).size !==
+            input.participants.length ||
+          !input.participants.some(
+            ({ playerId, uid }) =>
+              playerId === claims.playerId && uid === validated.uid
+          )
+        )
+          throw new VoiceError("invalid_external_voice_grant", 502);
+        const grant = Object.freeze({
+          ...validated,
+          participants: input.participants.map(({ playerId, uid }) => ({
+            playerId,
+            uid,
+          })),
+        });
+        for (const existing of this.session?.voiceGrants.values() || []) {
+          if (existing.appId !== grant.appId)
+            throw new VoiceError("voice_grants_not_session_isolated", 502);
+          if (
+            existing.uid === grant.uid ||
+            existing.token === grant.token ||
+            existing.refreshCapability === grant.refreshCapability
+          )
+            throw new VoiceError("voice_grants_not_player_isolated", 502);
+        }
+        this.session?.voiceGrants.set(claims.playerId, grant);
+        return this.completeAuthorization(claims, document);
+      })
+      .catch((error) =>
+        this.completeAuthorization(
+          claims,
+          document,
+          error?.code || "voice_grant_pull_failed"
+        )
+      );
+  }
+
+  completeAuthorization(claims, document, externalVoiceErrorCode) {
     if (
       this.session?.status !== "active" ||
       !this.pendingByPlayer.get(claims.playerId)?.startsWith("loading:")
@@ -515,18 +574,25 @@ class SessionManager extends EventEmitter {
     this.pendingAdmissions.set(admissionId, identity);
     this.pendingByPlayer.set(claims.playerId, admissionId);
     this.documentsByAdmission.set(admissionId, structuredClone(document));
+    if (
+      !this.profileClient.enabled &&
+      this.profilePolicy === "local-ephemeral-fallback"
+    )
+      this.ephemeralDocumentsByPlayer.set(
+        claims.playerId,
+        structuredClone(document)
+      );
     this.logger.info("player.admission_authorized", {
       sessionId: identity.sessionId,
       playerId: identity.playerId,
       admissionId,
     });
     try {
+      if (externalVoiceErrorCode)
+        throw new VoiceError(externalVoiceErrorCode, 503);
       const externalGrant = this.session.voiceGrants.get(claims.playerId);
       const externalParticipants = externalGrant
-        ? [...this.session.voiceGrants].map(([playerId, grant]) => ({
-            playerId,
-            uid: grant.uid,
-          }))
+        ? externalGrant.participants
         : undefined;
       const thnkVoice = this.voiceManager.prepareAdmission({
         ...identity,
@@ -586,6 +652,15 @@ class SessionManager extends EventEmitter {
     if (!active || active.connectionId !== connectionId) return;
     this.activePlayers.delete(identity.playerId);
     if (document) this.queueProfileSave(identity, document);
+    if (
+      document &&
+      !this.profileClient.enabled &&
+      this.profilePolicy === "local-ephemeral-fallback"
+    )
+      this.ephemeralDocumentsByPlayer.set(
+        identity.playerId,
+        structuredClone(document)
+      );
     this.voiceManager.revokeAdmission(identity.admissionId);
     this.documentsByAdmission.delete(identity.admissionId);
     this.logger.info("player.disconnected", {
@@ -664,6 +739,24 @@ class SessionManager extends EventEmitter {
   playerDocumentChanged(identity, document) {
     const active = this.activePlayers.get(identity?.playerId);
     if (!active || active.admissionId !== identity.admissionId) return false;
+    if (
+      !this.profileClient.enabled &&
+      this.profilePolicy === "local-ephemeral-fallback"
+    ) {
+      this.ephemeralDocumentsByPlayer.set(
+        identity.playerId,
+        structuredClone(document)
+      );
+      this.documentsByAdmission.set(
+        identity.admissionId,
+        structuredClone(document)
+      );
+      this.logger.warn("player_profile.ephemeral_write", {
+        sessionId: identity.sessionId,
+        playerId: identity.playerId,
+      });
+      return true;
+    }
     void this.queueProfileSave(identity, document);
     return true;
   }
@@ -867,12 +960,24 @@ const profileClient = new PlayerProfileClient({
     process.env.THNK_ALLOW_INSECURE_PLAYER_PROFILE_URL === "true",
   timeoutMs: process.env.THNK_PLAYER_PROFILE_TIMEOUT_MS || 3_000,
 });
+const authorityClient = new MatchmakingAuthorityClient({
+  baseUrl: process.env.THNK_MATCHMAKING_URL,
+  serviceToken: process.env.THNK_MATCHMAKING_AUTHORITY_TOKEN,
+  allowInsecureLocal:
+    process.env.THNK_ALLOW_INSECURE_MATCHMAKING_URL === "true",
+  timeoutMs: process.env.THNK_MATCHMAKING_TIMEOUT_MS || 5_000,
+});
+const profilePolicy =
+  process.env.THNK_PLAYER_PROFILE_POLICY || "fail-closed";
 const sessionManager = new SessionManager({
   enabled: bridgeEnabled,
   webhookSecret: process.env.THNK_WEBHOOK_SECRET,
   allowInsecureCallbacks: process.env.THNK_ALLOW_INSECURE_CALLBACKS === "true",
   voiceManager,
   profileClient,
+  authorityClient,
+  profilePolicy,
+  devMode: process.env.THNK_DEV_MODE === "true",
   maxSessionDurationMs:
     process.env.THNK_MAX_SESSION_DURATION_MS || 4 * 60 * 60 * 1_000,
   runtimeIdentity: {

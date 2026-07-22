@@ -78,6 +78,8 @@ const externalVoiceGrant = (playerId) => ({
 const manager = (overrides = {}) =>
   new SessionManager({
     enabled: true,
+    profilePolicy: "local-ephemeral-fallback",
+    devMode: true,
     webhookSecret: "w".repeat(32),
     allowInsecureCallbacks: true,
     fetchImpl: async () => ({ ok: true, status: 204 }),
@@ -120,6 +122,59 @@ test("maps a failed Player Profile preflight to a stable service error", async (
     status: 503,
   });
   expect(sessionManager.getPublicState()).toBeNull();
+});
+
+test("production fail-closed policy rejects an unconfigured Player Profile", async () => {
+  const sessionManager = new SessionManager({
+    enabled: true,
+    webhookSecret: "w".repeat(32),
+    allowInsecureCallbacks: true,
+    fetchImpl: async () => ({ ok: true, status: 204 }),
+    now: () => NOW_MS,
+    runtimeIdentity,
+    profilePolicy: "fail-closed",
+    devMode: false,
+  });
+  await expect(sessionManager.prepareSession(sessionInput())).rejects.toMatchObject({
+    code: "player_profile_unavailable",
+    status: 503,
+  });
+  expect(sessionManager.getPublicState()).toBeNull();
+  expect(sessionManager.getHealthState().checks.playerProfile).toBe(
+    "unavailable"
+  );
+});
+
+test("local ephemeral fallback is dev-gated and retains data only for the session", async () => {
+  expect(
+    () =>
+      new SessionManager({
+        enabled: true,
+        profilePolicy: "local-ephemeral-fallback",
+        devMode: false,
+      })
+  ).toThrow("requires explicit THNK_DEV_MODE=true");
+
+  const sessionManager = manager();
+  sessionManager.setGameReady();
+  await sessionManager.prepareSession(sessionInput());
+  const first = await sessionManager.authorize(
+    `Bearer ${signToken({ jti: "ephemeral-first" })}`
+  );
+  sessionManager.playerConnected(first.thnkIdentity, "transport-ephemeral-1");
+  expect(
+    sessionManager.playerDocumentChanged(first.thnkIdentity, {
+      progression: { xp: 12 },
+    })
+  ).toBe(true);
+  sessionManager.playerDisconnected(first.thnkIdentity, "transport-ephemeral-1", {
+    progression: { xp: 12 },
+  });
+  const second = await sessionManager.authorize(
+    `Bearer ${signToken({ jti: "ephemeral-second" })}`
+  );
+  expect(second.thnkPlayerDocument).toEqual({ progression: { xp: 12 } });
+  expect(sessionManager.getHealthState().checks.playerProfile).toBe("ephemeral");
 });
 
 test("loads, serializes, persists, and reloads one player document", async () => {
@@ -239,25 +294,31 @@ test("delivers one signed trust violation for repeated reports in one incident",
   );
 });
 
-test("uses roster-keyed external Agora grants without local credentials", () => {
+test("pulls one player-scoped Agora grant from Matchmaking at admission", async () => {
   const voiceManager = new VoiceTokenManager({
     enabled: true,
     now: () => NOW_MS,
   });
-  const sessionManager = manager({ voiceManager });
+  const authorityClient = {
+    enabled: true,
+    pullVoiceGrant: jest.fn(async ({ playerId }) => ({
+      ...externalVoiceGrant(playerId),
+      participants: [
+        { playerId: "alice", uid: "voice-alice" },
+        { playerId: "bob", uid: "voice-bob" },
+      ],
+    })),
+  };
+  const sessionManager = manager({ voiceManager, authorityClient });
   sessionManager.setGameReady();
-  sessionManager.createSession(
-    sessionInput({
-      players: ["alice", "bob"],
-      voiceGrants: Object.fromEntries(
-        ["alice", "bob"].map((playerId) => [
-          playerId,
-          externalVoiceGrant(playerId),
-        ])
-      ),
-    })
-  );
-  const admission = sessionManager.authorize(`Bearer ${signToken()}`);
+  sessionManager.createSession(sessionInput({ players: ["alice", "bob"] }));
+  const admissionToken = signToken();
+  const admission = await sessionManager.authorize(`Bearer ${admissionToken}`);
+  expect(authorityClient.pullVoiceGrant).toHaveBeenCalledWith({
+    sessionId: "session-m6",
+    playerId: "alice",
+    admissionToken,
+  });
   expect(admission.thnkVoice).toMatchObject({
     uid: "voice-alice",
     refreshOwner: "matchmaker",
@@ -271,7 +332,7 @@ test("uses roster-keyed external Agora grants without local credentials", () => 
   );
 });
 
-test("rejects partial external grants and preserves local minting fallback", () => {
+test("rejects pushed grants and preserves local minting fallback", () => {
   const externalOnly = manager({
     voiceManager: new VoiceTokenManager({ enabled: true, now: () => NOW_MS }),
   });
@@ -279,7 +340,7 @@ test("rejects partial external grants and preserves local minting fallback", () 
     externalOnly.createSession(
       sessionInput({ players: ["alice", "bob"], voiceGrants: {} })
     )
-  ).toThrow("voice_grants_must_match_roster");
+  ).toThrow("voice_grants_must_be_pulled");
 
   const aliceGrant = externalVoiceGrant("alice");
   expect(() =>
@@ -295,7 +356,7 @@ test("rejects partial external grants and preserves local minting fallback", () 
         },
       })
     )
-  ).toThrow("voice_grants_not_player_isolated");
+  ).toThrow("voice_grants_must_be_pulled");
 
   const local = manager({
     voiceManager: new VoiceTokenManager({

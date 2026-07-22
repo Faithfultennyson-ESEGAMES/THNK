@@ -33,6 +33,7 @@ process.env.THNK_GECKOS_BRIDGE_PATH = path.join(__dirname, "geckos-bridge.cjs");
 
 const { createControlServer } = require("./control-server.cjs");
 const { sessionManager } = require("./session-manager.cjs");
+const authorityClient = sessionManager.authorityClient;
 
 const manifest = identity.manifest;
 const serverPort = manifest.runtime.port;
@@ -44,6 +45,9 @@ const controlPort = Number(
 );
 const controlHost = process.env.THNK_CONTROL_HOST || "127.0.0.1";
 const controlToken = process.env.THNK_CONTROL_TOKEN;
+const outboundAuthorityEnabled = authorityClient.enabled;
+const devAuthorityRegistration =
+  process.env.THNK_DEV_AUTHORITY_REGISTER === "true";
 const shutdownTimeout = Number(process.env.THNK_SHUTDOWN_TIMEOUT_MS || 30_000);
 
 if (
@@ -69,10 +73,22 @@ if (
   throw new Error("THNK_CONTROL_PORT must be an integer from 1 to 65535.");
 if (
   sessionManager.enabled &&
+  !outboundAuthorityEnabled &&
   (typeof controlToken !== "string" || controlToken.length < 32)
 )
   throw new Error(
     "THNK_CONTROL_TOKEN must contain at least 32 characters in bridge mode."
+  );
+if (outboundAuthorityEnabled && !sessionManager.enabled)
+  throw new Error(
+    "THNK_MATCHMAKING_URL requires THNK_BRIDGE_ENABLED=true."
+  );
+if (
+  devAuthorityRegistration &&
+  !/^https?:\/\//.test(process.env.THNK_GAME_SERVER_URL || "")
+)
+  throw new Error(
+    "THNK_GAME_SERVER_URL is required when THNK_DEV_AUTHORITY_REGISTER=true."
   );
 
 app.disableHardwareAcceleration();
@@ -84,6 +100,23 @@ let serverStartPromise;
 let controlServer;
 let shuttingDown = false;
 let shutdownPromise;
+let authorityHeartbeatTimer;
+
+const authorityIdentity = {
+  gameId: identity.gameId,
+  modeId: process.env.THNK_MODE_ID || identity.authorityId,
+  authorityId: identity.authorityId,
+  serverBuildId: identity.serverBuildId,
+  compatibilityVersion: identity.compatibilityVersion,
+  clientBuildId: identity.clientBuildId,
+  protocolVersion: identity.protocolVersion,
+};
+
+const delay = (milliseconds) =>
+  new Promise((resolve) => {
+    const timer = setTimeout(resolve, milliseconds);
+    timer.unref?.();
+  });
 
 const waitForPort = () =>
   new Promise((resolve, reject) => {
@@ -125,12 +158,21 @@ const shutdown = (reason = "process_shutdown") => {
   forceExit.unref();
   app.once("will-quit", () => clearTimeout(forceExit));
   controlServer?.close();
+  clearInterval(authorityHeartbeatTimer);
   shutdownPromise = Promise.resolve(sessionManager.shutdown(reason))
     .catch((error) =>
       structuredLogger.error("server.shutdown_drain_failed", {
         errorMessage: error?.message,
       })
     )
+    .then(async () => {
+      if (devAuthorityRegistration && authorityClient.enabled)
+        await authorityClient.deregisterDev().catch((error) =>
+          structuredLogger.warn("authority.deregister_failed", {
+            errorCode: error?.code || "matchmaking_unavailable",
+          })
+        );
+    })
     .finally(() => {
       if (serverWindow && !serverWindow.isDestroyed()) serverWindow.close();
       else app.quit();
@@ -191,6 +233,57 @@ const startAuthority = () => {
   return serverStartPromise;
 };
 
+const startOutboundAuthority = async () => {
+  if (devAuthorityRegistration) {
+    await authorityClient.registerDev({
+      ...authorityIdentity,
+      gameServerUrl: process.env.THNK_GAME_SERVER_URL,
+    });
+    structuredLogger.info("authority.dev_registered", {
+      authorityId: identity.authorityId,
+      serverBuildId: identity.serverBuildId,
+    });
+    authorityHeartbeatTimer = setInterval(() => {
+      void authorityClient.heartbeatDev().catch((error) =>
+        structuredLogger.warn("authority.heartbeat_failed", {
+          errorCode: error?.code || "matchmaking_unavailable",
+        })
+      );
+    }, 15_000);
+    authorityHeartbeatTimer.unref?.();
+  }
+  structuredLogger.info("authority.pull_ready", {
+    authorityId: identity.authorityId,
+    modeId: authorityIdentity.modeId,
+    routeKind: devAuthorityRegistration ? "dev" : "production",
+  });
+  while (!shuttingDown) {
+    let session;
+    try {
+      session = await authorityClient.claim(authorityIdentity);
+    } catch (error) {
+      structuredLogger.warn("authority.claim_failed", {
+        errorCode: error?.code || "matchmaking_unavailable",
+      });
+      await delay(1_000);
+      continue;
+    }
+    if (!session) {
+      await delay(250);
+      continue;
+    }
+    await sessionManager.prepareSession(session);
+    await startAuthority();
+    await authorityClient.ready(session.sessionId);
+    structuredLogger.info("authority.session_ready", {
+      sessionId: session.sessionId,
+      authorityId: identity.authorityId,
+      routeKind: devAuthorityRegistration ? "dev" : "production",
+    });
+    return;
+  }
+};
+
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () => shutdown(`signal_${signal.toLowerCase()}`));
 
@@ -199,7 +292,9 @@ sessionManager.on("maximum-duration", () => shutdown("maximum_duration"));
 app
   .whenReady()
   .then(async () => {
-    if (sessionManager.enabled) {
+    if (outboundAuthorityEnabled) {
+      await startOutboundAuthority();
+    } else if (sessionManager.enabled) {
       controlServer = createControlServer({
         sessionManager,
         controlToken,

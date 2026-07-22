@@ -22,9 +22,16 @@ supervisor-owned. Do not set them manually.
 | Variable                             | Default       | Contract                                                 |
 | ------------------------------------ | ------------- | -------------------------------------------------------- |
 | `THNK_BRIDGE_ENABLED`                | `false`       | Enables supervised Matchmaking mode.                     |
+| `THNK_MATCHMAKING_URL`               | none          | HTTPS Matchmaking root the Authority calls outbound.     |
+| `THNK_MATCHMAKING_AUTHORITY_TOKEN`   | none          | Production or scoped dev Authority credential.           |
+| `THNK_MATCHMAKING_TIMEOUT_MS`        | `5000`        | Per outbound control/voice request deadline.              |
+| `THNK_ALLOW_INSECURE_MATCHMAKING_URL`| `false`       | Explicit private-LAN HTTP development only.               |
+| `THNK_MODE_ID`                       | authority ID  | Exact Matchmaking route/mode identity.                    |
+| `THNK_DEV_AUTHORITY_REGISTER`        | `false`       | Register/heartbeat this scoped dev Authority.             |
+| `THNK_GAME_SERVER_URL`               | none          | Client-reachable address advertised by a dev Authority.  |
 | `THNK_CONTROL_HOST`                  | `127.0.0.1`   | Bind to a private/protected interface only.              |
 | `THNK_CONTROL_PORT`                  | game port + 1 | Must differ from the Geckos port.                        |
-| `THNK_CONTROL_TOKEN`                 | none          | Independent 32+ character Matchmaking credential.        |
+| `THNK_CONTROL_TOKEN`                 | none          | Legacy private/manual inbound-control credential only.   |
 | `THNK_CONTROL_RATE_LIMIT_PER_MINUTE` | `120`         | Per-source health and control limits, isolated by group. |
 | `THNK_CONTROL_REQUEST_TIMEOUT_MS`    | `10000`       | Complete request deadline, 1,000–120,000 ms.             |
 | `THNK_CONTROL_BODY_TIMEOUT_MS`       | `5000`        | JSON body deadline, 250 ms up to request timeout.        |
@@ -32,8 +39,12 @@ supervisor-owned. Do not set them manually.
 | `THNK_WEBHOOK_SECRET`                | none          | Independent 32+ character HMAC secret.                   |
 | `THNK_ALLOW_INSECURE_CALLBACKS`      | `false`       | Allows HTTP only for loopback development.               |
 
-Request bodies are limited to 64 KiB and headers to 16 KiB. Control errors use
-stable JSON codes. Rate-limited responses are 429 with `Retry-After`.
+Production orchestrators provision each Authority with the outbound URL,
+credential, and exact route identity. Development registration uses the same
+outbound direction and does not require Matchmaking to reach the advertised
+address. Request bodies are limited to 64 KiB and headers to 16 KiB. The
+legacy inbound control API is available only when outbound pull is not
+configured.
 
 ## Player Profile
 
@@ -43,10 +54,15 @@ stable JSON codes. Rate-limited responses are 429 with `Retry-After`.
 | `THNK_PLAYER_PROFILE_TOKEN`              | none     | Independent 32+ character service credential. |
 | `THNK_PLAYER_PROFILE_TIMEOUT_MS`         | `3000`   | Per-call deadline, 250–30,000 ms.             |
 | `THNK_ALLOW_INSECURE_PLAYER_PROFILE_URL` | `false`  | Allows HTTP only for loopback development.    |
+| `THNK_PLAYER_PROFILE_POLICY`              | `fail-closed` | Production policy; optional dev fallback below. |
+| `THNK_DEV_MODE`                           | `false`  | Required for `local-ephemeral-fallback`.       |
 
-Player documents are JSON objects limited to 64 KiB. A blocked check or
-document load fails closed. Ordered write failure marks Player Profile
-readiness unavailable but never exposes the document in logs/control state.
+Player documents are JSON objects limited to 64 KiB. The default policy fails
+closed when Player Profile is absent or unavailable. Local development may set
+`THNK_PLAYER_PROFILE_POLICY=local-ephemeral-fallback` only together with
+`THNK_DEV_MODE=true`; documents then live in memory for that session only and
+the runtime logs the fallback and writes. Ordered production write failure
+marks readiness unavailable but never exposes document content.
 
 ## Agora voice
 
@@ -62,6 +78,7 @@ readiness unavailable but never exposes the document in logs/control state.
 | `THNK_VOICE_MAX_REFRESHES_PER_MINUTE`   | `8`     | Per-capability rolling limit.                      |
 | `THNK_VOICE_HTTP_RATE_LIMIT_PER_MINUTE` | `60`    | Per-source public HTTP route limit.                |
 
-If Matchmaking supplies all roster grants, local Agora credentials may be
-absent and `refreshOwner` must be `matchmaker`. Without grants, both local
-credentials and the bridge-owned refresh URL are required.
+In Matchmaking-managed mode, Core pulls a distinct grant only after validating
+the player's admission token; it rejects pushed `voiceGrants`, and local Agora
+credentials may be absent. In standalone mode, local credentials and the
+bridge-owned refresh URL provide the M4 fallback.

@@ -38,6 +38,8 @@ const main = async () => {
   const controlToken = "headless-control-token-value-32-chars";
   const manager = new SessionManager({
     enabled: true,
+    profilePolicy: "local-ephemeral-fallback",
+    devMode: true,
     webhookSecret: "headless-webhook-secret-value-32-chars",
     allowInsecureCallbacks: true,
     runtimeIdentity,

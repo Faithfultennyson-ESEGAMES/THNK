@@ -933,3 +933,31 @@ voice`).
   author/credits, the contributors table, and the thnk.cloud links are kept
   under an "Upstream & credits" section rather than removed. No code changed;
   documentation only.
+
+## 2026-07-22 - Outbound Authority networking, solo mode, and Profile policy
+
+- Reversed Matchmaking control ownership. The generated Authority now uses
+  `matchmaking-authority-client.cjs` to register (dev only), heartbeat, claim a
+  private session envelope, acknowledge readiness, and request gameplay voice
+  grants by calling Matchmaking outbound. Matchmaking never needs an Authority
+  route. `THNK_CONTROL_TOKEN` remains only for the legacy private/manual API.
+- At player admission, Core first verifies the Client-relayed signed JWT, then
+  requests that one player's voice grant with the Authority credential. Pushed
+  `voiceGrants` are rejected with `voice_grants_must_be_pulled`; an unavailable
+  voice pull is voice-only and does not corrupt authoritative gameplay.
+- Added explicit `THNK_Local::StartSoloMode`. It starts the real THNK server and
+  client stacks in one preview process. The local adapter now has an in-process
+  delivery bus because a browser `BroadcastChannel` does not deliver to the
+  object that posted the message. Dedicated transport remains a separate path.
+- Player Profile now defaults to `THNK_PLAYER_PROFILE_POLICY=fail-closed`.
+  `local-ephemeral-fallback` requires `THNK_DEV_MODE=true`, keeps documents only
+  for the active session, and reports the fallback in logs/health. Tests cover
+  both policies separately.
+- Added a generated-runtime syntax gate, which immediately caught and fixed a
+  malformed URL-validation regex in the new dev-registration startup branch.
+  Every committed `.cjs` runtime is now checked with Node `--check` in CI.
+- Verification: strict TypeScript passed; all 90 Jest tests passed across 21
+  suites; the complete THNK/adapters/extensions build passed and regenerated
+  the committed extension artifacts. Dedicated production claim, dev
+  registration, solo mode, Profile fail-closed, and ephemeral fallback each
+  have named independent coverage.

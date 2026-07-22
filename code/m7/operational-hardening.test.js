@@ -42,6 +42,8 @@ const sessionInput = {
 const manager = (overrides = {}) =>
   new SessionManager({
     enabled: true,
+    profilePolicy: "local-ephemeral-fallback",
+    devMode: true,
     webhookSecret: "w".repeat(32),
     allowInsecureCallbacks: true,
     fetchImpl: async () => ({ ok: true, status: 204 }),

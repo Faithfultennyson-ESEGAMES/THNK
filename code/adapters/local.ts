@@ -10,6 +10,22 @@ namespace THNK {
     logger.error("An error occured while sending a message!", e)
   );
   const ownID = "" + Date.now() + Math.random() * 1000;
+  const inProcessListeners = new Set<(event: MessageEvent<MessageTypes>) => void>();
+  const post = (data: MessageTypes) => {
+    bc.postMessage(data);
+    queueMicrotask(() => {
+      const event = { data } as MessageEvent<MessageTypes>;
+      for (const listener of inProcessListeners) listener(event);
+    });
+  };
+  const subscribe = (listener: (event: MessageEvent<MessageTypes>) => void) => {
+    bc.addEventListener("message", listener);
+    inProcessListeners.add(listener);
+  };
+  const unsubscribe = (listener: (event: MessageEvent<MessageTypes>) => void) => {
+    bc.removeEventListener("message", listener);
+    inProcessListeners.delete(listener);
+  };
 
   type MessageTypes =
     | {
@@ -29,22 +45,22 @@ namespace THNK {
     private boundOnBCMessage = this.onBCMessage.bind(this);
 
     async prepare(runtimeScene: gdjs.RuntimeScene): Promise<void> {
-      bc.addEventListener("message", this.boundOnBCMessage);
-      bc.postMessage({ message: "connect", from: ownID } as MessageTypes);
+      subscribe(this.boundOnBCMessage);
+      post({ message: "connect", from: ownID });
       window.addEventListener("beforeunload", () => this.close());
     }
 
     close() {
-      bc.postMessage({ message: "disconnect", from: ownID } as MessageTypes);
-      bc.removeEventListener("message", this.boundOnBCMessage);
+      post({ message: "disconnect", from: ownID });
+      unsubscribe(this.boundOnBCMessage);
     }
 
     protected doSendMessage(message: Uint8Array): void {
-      bc.postMessage({
+      post({
         message: "msg-for-server",
         data: message,
         from: ownID,
-      } as MessageTypes);
+      });
     }
   }
 
@@ -58,20 +74,20 @@ namespace THNK {
     private boundOnBCMessage = this.onBCMessage.bind(this);
 
     async prepare(): Promise<void> {
-      bc.addEventListener("message", this.boundOnBCMessage);
+      subscribe(this.boundOnBCMessage);
       window.addEventListener("beforeunload", () => this.close());
     }
 
     close() {
-      bc.removeEventListener("message", this.boundOnBCMessage);
+      unsubscribe(this.boundOnBCMessage);
     }
 
     protected doSendMessageTo(userID: string, message: Uint8Array): void {
-      bc.postMessage({
+      post({
         message: "msg-for-client",
         data: message,
         for: userID,
-      } as MessageTypes);
+      });
     }
 
     getServerID(): string {
