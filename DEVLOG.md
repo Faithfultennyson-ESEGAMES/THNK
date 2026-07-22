@@ -1022,3 +1022,72 @@ voice`).
   with `WEB_SECURITY_RESTRICT`. An HTTPS or localhost deployment with microphone
   permission remains required for an audible voice gate; this was recorded as
   expected and was not counted as a voice pass.
+
+## 2026-07-22 - Real-export certification planning
+
+- Added `THNK-REAL-EXPORT-CERTIFICATION-PLAN.md` as the cross-service plan for
+  real email/password identities, repeated interval logins, concurrent sessions,
+  a ninety-user social and Matchmaking load, real exported gameplay, and live
+  Agora over the user's trusted HTTPS tunnel hostnames.
+- Audited the six canonical GDevelop extensions: 203 total functions, of which
+  193 are public (69 actions, 42 conditions, 32 numeric expressions, 42 string
+  expressions, and 8 expression/condition functions). The existing Feature Lab
+  exercises the main workflows but does not yet justify an all-functions claim;
+  the plan makes a generated function-by-function coverage manifest the first
+  gate.
+- Kept production-policy rate-limit proof separate from a documented
+  capacity-test configuration. Ninety accounts will be registered through the
+  real API and repeatedly logged in without the lab's login-or-register
+  fallback, while secrets and raw tokens remain outside reports and logs.
+- Recorded the architecture boundary honestly: Core is one match per process
+  and V1 does not include the production autoscaling orchestrator/session-aware
+  ingress. The plan can certify 90 real service users and 22 real assignment
+  handoffs plus two concurrent exported sessions (FFA and Teams); it does not
+  relabel lightweight Authority claimers as 22 live GDevelop game processes.
+- Reserved Windows tunnel listeners 18080/19400/19300/19208/19210 for the
+  Feature Lab, Player Profile, Matchmaking, FFA Authority, and Teams Authority.
+  Private Authority control ports remain unexposed. Planning only was performed
+  in this entry; no load or destructive account cleanup has run yet.
+
+## 2026-07-22 - HTTPS real-export certification execution
+
+- Added raw TCP certification forwarders for the five trusted HTTPS tunnels
+  without exposing Redis, PostgreSQL, or Authority control ports. Published the
+  GDevelop export under the cache-isolated `/cert-a8163b9c/` path after proving
+  Cloudflare could otherwise retain stale generated JavaScript.
+- Generated compile references and coverage ownership for all 193 public
+  functions across the six Core, Matchmaking, and Player Profile extensions.
+  GDevelop 5.6.274 imported, saved, and exported the resulting seven-scene
+  project with the public HTTPS Player Profile and Matchmaking URLs.
+- Passed the HTTPS exported-game gates for two users, public four-player FFA,
+  public four-player Teams, and a four-player private FFA lobby. The runs proved
+  real email/password identities, signed admission routing, direct Client to
+  Authority connections, real GDevelop keyboard events, synchronized movement,
+  and Authority-owned scoring with no browser/network/application errors.
+- Fixed two certification defects exposed by those gates: friend-request list
+  assertions now wait for refreshed server state, and the headless keyboard
+  input remains down across multiple GDevelop frames. The HTTPS lab QoS probe
+  now uses app3; its configurable lab threshold is 1000 ms because Cloudflare
+  produced one valid 615 ms median during private-lobby testing.
+- Registered 90 real `ThnkC001` through `ThnkC090` accounts in paced batches.
+  Separate immutable reports passed the 2/4/10/30/60/90 login ramps, five full
+  90-user cycles two minutes apart, 90 unique stable canonical IDs, and 60
+  bearer/replacement identity assertions across 15 three-session users.
+- Player Profile social load passed alias search, 45 concurrent request/accept
+  pairs, self/duplicate/decline/block/opposite-race cases, deterministic cleanup,
+  a 90-edge two-friend ring, and 90 durable messages with history,
+  conversations, unread, and mark-read verification. Matchmaking then passed
+  90 authenticated WebSockets, friend-filtered presence, 15 three-session
+  users, replacement semantics, 90 realtime friend messages, and world-chat
+  mask/reject/history behavior.
+- Preserved two expected failed reports rather than hiding retries: numeric
+  fixture text was correctly blocked by the PII policy, and reusing one
+  idempotency key for a different 10-user versus 90-user recipient correctly
+  returned `client_message_id_conflict`. Fixtures were corrected and both full
+  retries passed.
+- Post-run service audit showed zero current Player Profile or Matchmaking
+  restarts, approximately 50 MiB and 155 MiB service memory respectively, more
+  than 2 GiB host memory available, and no warning-level entries from the
+  certification window. Phase D's 22 simultaneous assignment handoffs remains
+  pending a lightweight production claimer; the one-match GDevelop dev
+  Authority will not be mislabeled as a 22-session orchestrator.
