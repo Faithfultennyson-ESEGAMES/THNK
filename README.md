@@ -103,6 +103,9 @@ the `thnk server` CLI.
   the platform plan and blueprint; the sibling services have their own plans
   (`THNK-Matchmaking-Implementation-Plan.md`,
   `THNK-PlayerProfile-Implementation-Plan.md`).
+- **`docs/development/FEATURE-LAB-OPERATIONS.md`** contains the Ubuntu
+  service/port map, `thnk-stack` commands, GDevelop scene guidance, and the
+  four-client cross-service test procedure.
 - Upstream framework documentation lives at
   [thnk.cloud/docs](https://thnk.cloud/docs/getting-started/) (concepts and the
   GDevelop-facing API remain compatible with upstream).

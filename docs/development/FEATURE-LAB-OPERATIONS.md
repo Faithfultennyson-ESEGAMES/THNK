@@ -1,0 +1,127 @@
+# Feature Lab operations
+
+This is the canonical development deployment for the THNK cross-service test
+game. All long-running services live on the Ubuntu host at `192.168.1.196` and
+are managed by systemd. Windows Docker is not part of this stack.
+
+## Service map
+
+| Component | Listener | Exposure |
+| --- | --- | --- |
+| PostgreSQL 17 | `127.0.0.1:5432` | Ubuntu only |
+| Redis 7 | `127.0.0.1:6379` | Ubuntu only |
+| Player Profile | `0.0.0.0:9400` | LAN clients |
+| Matchmaking | `0.0.0.0:9300` | LAN clients |
+| Feature Lab Authority | `0.0.0.0:9208` | LAN clients |
+| Legacy/manual Authority control | `127.0.0.1:9209` | Reserved; not opened by the outbound-only lane |
+| Feature Lab browser build | `0.0.0.0:8080` | LAN clients |
+
+The service environment and generated runtime files live under
+`/home/smile/thnk-dev`. Secrets are mode `0600` files under
+`/home/smile/thnk-dev/config`; do not copy them into a repository.
+
+## Start, stop, inspect
+
+SSH to the Ubuntu host and use the one operator command:
+
+```bash
+thnk-stack start
+thnk-stack status
+thnk-stack logs
+thnk-stack restart
+thnk-stack stop
+```
+
+PostgreSQL and Redis remain running when `thnk-stack stop` is used so local
+profile data and queue infrastructure stay available. Every THNK unit is
+enabled at boot.
+
+An idle outbound Authority is healthy when its systemd unit is active and its
+log contains `authority.pull_ready`. Port 9208 opens only after it claims a
+session; `server.ready` confirms that session is accepting gameplay clients.
+
+The exported bundle contains two Authority levels but one process owns one
+Geckos port. Select which level the development Authority runs, then open a new
+match:
+
+```bash
+thnk-stack mode ffa
+thnk-stack mode teams
+```
+
+This one-at-a-time switch is only a development-host constraint. A production
+orchestrator launches each assigned Authority in its own isolated process or
+container, so different modes can run concurrently while using the same
+Matchmaking service and server artifact.
+
+## Open the Feature Lab
+
+For the real LAN service path, open this URL in a desktop browser:
+
+```text
+http://192.168.1.196:8080
+```
+
+Open it in four separate browser profiles or private windows. In each window:
+
+1. Stay on the `IDENTITY` panel and press `1`, `2`, `3`, or `4` once so the
+   windows become Alice, Bob, Cara, and Dora. The lab registers the account on
+   first use and logs in on later uses.
+2. Use `P` and `O` to move forward and backward through the panels.
+3. On `MATCHMAKING`, press `1` to connect and `2` to enter the FFA queue. All
+   four authenticated clients are required to fill that queue.
+4. Use the visible instructions on each panel for parties, private lobbies,
+   friends, safety, chat, messages, rankings, and diagnostics.
+5. To test Teams, run `thnk-stack mode teams`, reconnect the four clients, and
+   press `3` on the `MATCHMAKING` panel.
+
+The service build is deliberately exported with the Ubuntu Player Profile and
+Matchmaking URLs. The source GDevelop project keeps loopback defaults so it is
+safe for local editing.
+
+## Opening the GDevelop project
+
+The project is:
+
+```text
+C:\Users\Denis\Desktop\WORKSTATION\PROJECTS\THNK\PlayerProfile\gdevelop-test-game\THNK-Test-Game.json
+```
+
+Use `Client_FeatureLab` as the ordinary client scene. The `DevAuthority_*` and
+`Authority_*` scenes are server roles, not scenes a player should open by hand.
+`Solo_FeatureLab` is the explicit in-process local lane and does not replace the
+dedicated-Authority test above.
+
+GDevelop embeds extension copies in the project. After changing an extension,
+run the Player Profile repository's `feature-lab:sync`, `feature-lab:audit`, and
+`feature-lab:export` scripts before treating a browser build as current.
+
+## Current security boundary
+
+This LAN stack uses HTTP for gameplay development. Player sessions and signed
+admission tokens are real; Player Profile remains fail-closed for the dedicated
+Authority. Secure cookies are enabled, so the short-lived access token is the
+working browser credential on HTTP and cookie refresh is reserved for the TLS
+deployment lane.
+
+Agora credentials are stored on the server but browser voice is intentionally
+disabled in this HTTP build. Real microphone and token-refresh testing needs an
+HTTPS client origin and an HTTPS public Matchmaking URL. Missing voice remains
+a controlled voice-only state and does not break login, social features,
+matchmaking, or gameplay.
+
+## Fast diagnosis
+
+```bash
+thnk-stack status
+systemctl --no-pager --full status thnk-playerprofile thnk-matchmaking thnk-authority
+journalctl --no-pager -u thnk-authority -n 100
+```
+
+From another LAN computer, these must answer:
+
+```text
+http://192.168.1.196:9400/health/ready
+http://192.168.1.196:9300/health/ready
+http://192.168.1.196:8080
+```

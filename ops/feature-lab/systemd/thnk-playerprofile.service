@@ -1,0 +1,19 @@
+[Unit]
+Description=THNK Player Profile development service
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smile
+WorkingDirectory=/home/smile/thnk-dev/playerprofile
+Environment=NODE_ENV=production
+EnvironmentFile=/home/smile/thnk-dev/config/playerprofile.env
+ExecStart=/home/smile/tools/node-v24.18.0-linux-x64/bin/node dist/src/index.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+units=(
+  postgresql
+  redis-server
+  thnk-playerprofile
+  thnk-matchmaking
+  thnk-feature-lab
+  thnk-authority
+)
+
+usage() {
+  echo "Usage: thnk-stack {start|stop|restart|status|logs|mode ffa|mode teams}"
+}
+
+case "${1:-}" in
+  start)
+    sudo systemctl start "${units[@]}"
+    ;;
+  stop)
+    sudo systemctl stop thnk-authority thnk-feature-lab thnk-matchmaking thnk-playerprofile
+    ;;
+  restart)
+    sudo systemctl restart thnk-playerprofile thnk-matchmaking thnk-feature-lab thnk-authority
+    ;;
+  status)
+    systemctl --no-pager --full status "${units[@]}" || true
+    echo
+    curl --fail --silent --show-error http://127.0.0.1:9400/health/ready && echo
+    curl --fail --silent --show-error http://127.0.0.1:9300/health/ready && echo
+    systemctl is-active --quiet thnk-authority && echo '{"authority":"idle-or-running"}'
+    ;;
+  logs)
+    sudo journalctl -f -u thnk-playerprofile -u thnk-matchmaking -u thnk-authority -u thnk-feature-lab
+    ;;
+  mode)
+    case "${2:-}" in
+      ffa) authority_id=feature-lab-ffa; map_id=overlap-ffa ;;
+      teams) authority_id=feature-lab-teams; map_id=overlap-teams ;;
+      *) usage; exit 2 ;;
+    esac
+    sudo sed -i -E "s/^THNK_AUTHORITY_ID=.*/THNK_AUTHORITY_ID=${authority_id}/; s/^THNK_MODE_ID=.*/THNK_MODE_ID=${authority_id}/; s/^THNK_MAP_ID=.*/THNK_MAP_ID=${map_id}/" /home/smile/thnk-dev/config/authority.env
+    sudo systemctl restart thnk-authority
+    echo "Feature Lab Authority mode: ${authority_id}"
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

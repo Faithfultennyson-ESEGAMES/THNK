@@ -973,3 +973,24 @@ voice`).
   compatible. Credentials, query strings, and fragments are rejected.
 - Added pure endpoint tests plus a structural extension test. Strict typecheck,
   all 94 tests across 22 suites, and the complete extension build pass.
+
+## 2026-07-22 - Managed Ubuntu Feature Lab stack
+
+- Replaced the ad-hoc Ubuntu Player Profile process with systemd-managed
+  Player Profile, Matchmaking, static Feature Lab client, and exported Authority
+  units. PostgreSQL and Redis remain private native services on the same host.
+- Added `ops/feature-lab` service units and the `thnk-stack` operator command,
+  including start/stop/status/logs and the explicit one-process-at-a-time FFA or
+  Teams development mode switch.
+- Added `docs/development/FEATURE-LAB-OPERATIONS.md` with the canonical port map,
+  GDevelop scene guidance, four-client instructions, security boundaries, and
+  diagnosis commands.
+- The Ubuntu cleanup permanently removed obsolete M2-M7, Matchmaking M1-M3,
+  NDC probe, archive, and remote-control test artifacts. Active database data,
+  Redis data, SSH configuration, source repositories, and reusable toolchains
+  were preserved.
+- Installed the checksum-verified Electron 43.1.1 Linux runtime and exercised
+  the exported Authority through Xvfb. Separate four-player FFA and Teams runs
+  each produced one session, four distinct admission tokens, the expected
+  Client-reachable address, `session.created`, and `server.ready`. The host was
+  returned to idle FFA mode with temporary queue/session keys cleared.

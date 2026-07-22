@@ -1,0 +1,17 @@
+[Unit]
+Description=THNK Feature Lab browser build
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smile
+WorkingDirectory=/home/smile/thnk-dev/client
+ExecStart=/usr/bin/python3 -m http.server 8080 --bind 0.0.0.0 --directory /home/smile/thnk-dev/client
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

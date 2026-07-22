@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec /usr/bin/xvfb-run \
+  -a \
+  --server-args="-screen 0 1024x768x24" \
+  /home/smile/thnk-dev/authority/node_modules/electron/dist/electron \
+  --no-sandbox \
+  .
