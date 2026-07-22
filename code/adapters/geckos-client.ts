@@ -2,6 +2,7 @@
 import { geckos, type ClientChannel } from "@geckos.io/client";
 import {
   endpointPort,
+  geckosConnectionEndpoint,
   normalizeGeckosEndpoint,
 } from "adapters/geckos-client-endpoint";
 import { sessionVoice, type VoiceGrant } from "voice/AgoraSessionVoice";
@@ -36,8 +37,7 @@ THNK.GeckosClientAdapter = class GeckosClientAdapter extends (
 
   async prepare(): Promise<void> {
     this.connection = geckos({
-      url: this.ip,
-      ...(this.port === null ? {} : { port: this.port }),
+      ...geckosConnectionEndpoint({ url: this.ip, port: this.port }),
       label: "THNK",
       authorization: this.authorization,
     });

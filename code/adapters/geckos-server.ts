@@ -245,9 +245,11 @@ THNK.GeckosServerAdapter = class GeckosServerAdapter extends (
     this.httpServer.on("error", (err) =>
       logger.error("HTTP server error! ", err)
     );
-    this.httpServer.on("clientError", (err) =>
-      logger.error("HTTP server client-error! ", err)
-    );
+    this.httpServer.on("clientError", (err) => {
+      if ((err as NodeJS.ErrnoException).code === "ECONNRESET")
+        return logger.warn("HTTP client reset during disconnect.");
+      logger.error("HTTP server client-error! ", err);
+    });
     this.server.addServer(this.httpServer);
     await new Promise<void>((resolve, reject) => {
       const onStartupError = (error: Error) => {

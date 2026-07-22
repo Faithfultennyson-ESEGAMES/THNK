@@ -102,3 +102,44 @@ test("reads and writes only the selected player's persistent document", () => {
   switchPlayerContext("user-b");
   expect(getCurrentPlayerVariableNumber("progression.xp")).toBe(2);
 });
+
+test("round-trips schema nulls without converting them to the string null", () => {
+  const writes: unknown[] = [];
+  setPlayerDocument(
+    "user-a",
+    {
+      achievements: {
+        first_overlap: {
+          progress: 0,
+          target: 1,
+          unlocked: false,
+          unlockedAt: null,
+        },
+      },
+    },
+    (document) => writes.push(document)
+  );
+  switchPlayerContext("user-a");
+  expect(getPlayerDocument("user-a")).toEqual({
+    achievements: {
+      first_overlap: {
+        progress: 0,
+        target: 1,
+        unlocked: false,
+        unlockedAt: null,
+      },
+    },
+  });
+
+  const progress = new gdjs.Variable();
+  progress.setNumber(1);
+  expect(
+    setCurrentPlayerVariable(
+      "achievements.first_overlap.progress",
+      progress
+    )
+  ).toBe(true);
+  expect(writes.at(-1)).toMatchObject({
+    achievements: { first_overlap: { progress: 1, unlockedAt: null } },
+  });
+});

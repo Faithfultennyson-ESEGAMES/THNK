@@ -31,3 +31,14 @@ export const endpointPort = ({ url, port }: GeckosEndpoint): number => {
   if (parsed.port) return Number(parsed.port);
   return parsed.protocol === "https:" ? 443 : 80;
 };
+
+export const geckosConnectionEndpoint = ({
+  url,
+  port,
+}: GeckosEndpoint): { url: string; port: number } => ({
+  url,
+  // The Geckos client defaults an omitted port to 9208. Passing null is
+  // intentional for a complete URL whose port is already embedded in `url`.
+  // Its runtime supports null even though ClientOptions declares only number.
+  port: port as number,
+});

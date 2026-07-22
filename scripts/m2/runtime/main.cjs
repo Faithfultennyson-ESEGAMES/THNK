@@ -1,6 +1,7 @@
 const net = require("net");
 const path = require("path");
 const { app, BrowserWindow } = require("electron");
+const { consoleMethodForLevel } = require("./console-level.cjs");
 const remoteMain = require("@electron/remote/main");
 const { loadBundleIdentity } = require("./bundle-identity.cjs");
 const { structuredLogger } = require("./structured-logger.cjs");
@@ -197,7 +198,7 @@ const startAuthority = () => {
     });
     remoteMain.enable(serverWindow.webContents);
     serverWindow.webContents.on("console-message", (_event, level, message) => {
-      const method = level >= 2 ? "error" : level === 1 ? "warn" : "info";
+      const method = consoleMethodForLevel(level);
       structuredLogger[method]("game.console", { message });
     });
     serverWindow.webContents.on(

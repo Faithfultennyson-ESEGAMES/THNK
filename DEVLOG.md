@@ -994,3 +994,31 @@ voice`).
   each produced one session, four distinct admission tokens, the expected
   Client-reachable address, `session.created`, and `server.ready`. The host was
   returned to idle FFA mode with temporary queue/session keys cleared.
+
+## 2026-07-22 - Live browser E2E hardening
+
+- Fixed complete-URL Geckos connections so an Authority URL that already has a
+  port is not combined with the adapter's default port a second time. Added
+  endpoint regression coverage and regenerated the Client extension.
+- Preserved genuine `null` values when Player Profile documents make the
+  GDevelop variable round trip; GDevelop's string value `"null"` is restored
+  only at paths that were null in the source document. Added nested object and
+  array coverage.
+- Downgraded expected Geckos `ECONNRESET` disconnect noise to a warning and
+  corrected Electron console-level classification so GDevelop/PIXI warnings do
+  not become false server errors.
+- Exported and validated the exact two-authority Feature Lab artifact at
+  `sha256:801a9ebfa02fc4180f33c1b47642c5fc3bd507fcc2f463eada41d310dc8db788`,
+  deployed it under Ubuntu/Xvfb, and ran real Chromium clients against ports
+  8080/9300/9400/9208.
+- Final headless gates passed for two players, four-player public FFA,
+  four-player Teams, and a four-player private FFA lobby. Both game modes proved
+  browser keyboard input, identity-correct Authority ownership, replicated
+  movement, collision, and synchronized authoritative scoring. The final
+  service-log audit contained no structured application errors.
+- Full Core verification passed: strict TypeScript, 96 Jest tests across 22
+  suites, and the complete THNK/adapters/extensions build.
+- Voice controls were invoked, but Agora correctly rejected the LAN HTTP origin
+  with `WEB_SECURITY_RESTRICT`. An HTTPS or localhost deployment with microphone
+  permission remains required for an audible voice gate; this was recorded as
+  expected and was not counted as a voice pass.

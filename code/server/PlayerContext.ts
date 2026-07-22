@@ -3,9 +3,46 @@ const playerObjectsLists = new Map<string, gdjs.LongLivedObjectsList>();
 type PlayerTag = string | number | boolean;
 const playerTags = new Map<string, Readonly<Record<string, PlayerTag>>>();
 const playerDocuments = new Map<string, gdjs.Variable>();
+const playerDocumentNullPaths = new Map<string, ReadonlySet<string>>();
 const playerDocumentWriters = new Map<string, (document: unknown) => void>();
 const watchedFields = new Set<string>();
 const pendingVariableChanges: Array<{ playerID: string; path: string }> = [];
+
+const collectNullPaths = (
+  value: unknown,
+  path = "",
+  paths = new Set<string>()
+): Set<string> => {
+  if (value === null) paths.add(path);
+  else if (Array.isArray(value))
+    value.forEach((child, index) =>
+      collectNullPaths(child, path ? `${path}.${index}` : String(index), paths)
+    );
+  else if (value && typeof value === "object")
+    for (const [name, child] of Object.entries(value))
+      collectNullPaths(child, path ? `${path}.${name}` : name, paths);
+  return paths;
+};
+
+const restoreNullPaths = (
+  value: unknown,
+  nullPaths: ReadonlySet<string>,
+  path = ""
+): unknown => {
+  if (nullPaths.has(path) && value === "null") return null;
+  if (Array.isArray(value))
+    return value.map((child, index) =>
+      restoreNullPaths(child, nullPaths, path ? `${path}.${index}` : String(index))
+    );
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value).map(([name, child]) => [
+        name,
+        restoreNullPaths(child, nullPaths, path ? `${path}.${name}` : name),
+      ])
+    );
+  return value;
+};
 
 const getDocumentVariable = (
   playerID: string,
@@ -76,6 +113,7 @@ export const releasePlayerContext = (playerID: string) => {
   playerObjectsLists.delete(playerID);
   playerTags.delete(playerID);
   playerDocuments.delete(playerID);
+  playerDocumentNullPaths.delete(playerID);
   playerDocumentWriters.delete(playerID);
   for (let index = pendingVariableChanges.length - 1; index >= 0; index -= 1)
     if (pendingVariableChanges[index]!.playerID === playerID)
@@ -87,6 +125,7 @@ export const resetPlayerContexts = () => {
   playerObjectsLists.clear();
   playerTags.clear();
   playerDocuments.clear();
+  playerDocumentNullPaths.clear();
   playerDocumentWriters.clear();
   watchedFields.clear();
   pendingVariableChanges.length = 0;
@@ -112,11 +151,15 @@ export const setPlayerDocument = (
   const variable = new gdjs.Variable();
   variable.fromJSObject(document);
   playerDocuments.set(playerID, variable);
+  playerDocumentNullPaths.set(playerID, collectNullPaths(document));
   if (before) enqueueWatchedFieldChanges(playerID, before);
   if (onChange) playerDocumentWriters.set(playerID, onChange);
 };
 export const getPlayerDocument = (playerID: string): unknown =>
-  playerDocuments.get(playerID)?.toJSObject() || {};
+  restoreNullPaths(
+    playerDocuments.get(playerID)?.toJSObject() || {},
+    playerDocumentNullPaths.get(playerID) || new Set()
+  );
 export const getCurrentPlayerVariableNumber = (path: string): number =>
   getDocumentVariable(currentPlayerID, path)?.getAsNumber() || 0;
 export const getCurrentPlayerVariableString = (path: string): string =>
@@ -139,7 +182,7 @@ export const setCurrentPlayerVariable = (
   gdjs.Variable.copy(value, target);
   enqueueWatchedFieldChanges(currentPlayerID, before);
   playerDocumentWriters.get(currentPlayerID)?.(
-    playerDocuments.get(currentPlayerID)!.toJSObject()
+    getPlayerDocument(currentPlayerID)
   );
   return true;
 };

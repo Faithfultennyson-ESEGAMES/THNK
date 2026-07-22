@@ -36,6 +36,15 @@ test("all generated server runtime files parse as CommonJS", () => {
   }
 });
 
+test("maps Chromium console warnings without escalating them to errors", () => {
+  const { consoleMethodForLevel } = require("../../scripts/m2/runtime/console-level.cjs");
+
+  expect(consoleMethodForLevel(0)).toBe("info");
+  expect(consoleMethodForLevel(1)).toBe("info");
+  expect(consoleMethodForLevel(2)).toBe("warn");
+  expect(consoleMethodForLevel(3)).toBe("error");
+});
+
 test("normalizes GDevelop inline function identifiers deterministically", () => {
   const serverDirectory = makeTemporaryDirectory();
   fs.writeFileSync(

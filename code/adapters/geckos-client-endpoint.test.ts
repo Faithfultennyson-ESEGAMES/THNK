@@ -1,5 +1,6 @@
 import {
   endpointPort,
+  geckosConnectionEndpoint,
   normalizeGeckosEndpoint,
 } from "adapters/geckos-client-endpoint";
 
@@ -17,6 +18,10 @@ describe("Geckos client endpoint normalization", () => {
       null
     );
     expect(endpoint).toEqual({
+      url: "https://authority.example:9443/session",
+      port: null,
+    });
+    expect(geckosConnectionEndpoint(endpoint)).toEqual({
       url: "https://authority.example:9443/session",
       port: null,
     });
