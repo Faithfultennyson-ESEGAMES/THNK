@@ -1154,3 +1154,27 @@ voice`).
   Player Profile login returned `rate_limited`, the eleventh Matchmaking find
   returned `match_rate_limited`, and both admitted the same canonical player
   after the real 60-second windows expired.
+
+## 2026-07-25 - Interactive Feature Lab and reconnect-safe dev Authority
+
+- Added a reconnect-safe developer-Authority registration controller. A lost
+  registration is recreated after `dev_authority_not_registered`, unrelated
+  heartbeat errors remain visible, and unit coverage proves both recovery and
+  logging behavior.
+- Corrected server-bundle Authority discovery so compile-only constant-false
+  `HostServer` references cannot become runnable catalog entries. The final
+  two-Authority Feature Lab artifact validates at
+  `sha256:078c5815f77c778b76e3e4bb5c8296d9c342c46991a80fc74432ab940bd27fe4`.
+- Replaced the keyboard-only Feature Lab shell with an interactive account,
+  matchmaking, party/lobby, social, chat, leaderboard, profile, diagnostics,
+  and in-match HUD. The canvas diagnostic HUD remains server-side but is hidden
+  behind the player HUD on Clients.
+- Kept GDevelop Preview, local export, and deployment export isolated. Actual
+  file Preview completed real login plus Matchmaking connect/disconnect without
+  changing the source project. Four-player LAN FFA and HTTPS FFA/Teams each
+  proved distinct identities, signed routing, synchronized movement, and
+  Authority-owned scoring.
+- The HTTPS FFA and Teams runs each proved four Agora publishers, three remote
+  audio users per Client, mute/unmute, leave/rejoin, and zero browser problems.
+  Full Core verification passes 99 tests across 23 suites, strict TypeScript,
+  and the complete distribution/extension build.

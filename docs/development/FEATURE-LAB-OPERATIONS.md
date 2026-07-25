@@ -77,20 +77,29 @@ Matchmaking never connects into a developer Authority.
 
 Open it in four separate browser profiles or private windows. In each window:
 
-1. Stay on the `IDENTITY` panel and press `1`, `2`, `3`, or `4` once so the
-   windows become Alice, Bob, Cara, and Dora. The lab registers the account on
-   first use and logs in on later uses.
-2. Use `P` and `O` to move forward and backward through the panels.
-3. On `MATCHMAKING`, press `1` to connect and `2` to enter the FFA queue. All
-   four authenticated clients are required to fill that queue.
-4. Use the visible instructions on each panel for parties, private lobbies,
-   friends, safety, chat, messages, rankings, and diagnostics.
+1. In a real export, enter an email and password and use the visible Login or
+   Register controls. In GDevelop Preview, the four explicit Alice/Bob/Cara/Dora
+   persona buttons are also available as test shortcuts.
+2. Use the Play, Social, Chat, Leaderboard, Profile, and Diagnostics tabs. The
+   lab now provides actual buttons and text fields; keyboard commands are
+   retained only as an automation compatibility surface.
+3. On Play, connect to Matchmaking and choose FFA. All four authenticated
+   clients are required to fill that queue.
+4. Use Social to search/add/remove/block players, Chat for world/direct
+   messages, Profile to edit the public display name, and Leaderboard to verify
+   persistent Authority-awarded overlap scores.
 5. To test Teams, run `thnk-stack mode teams`, reconnect the four clients, and
-   press `3` on the `MATCHMAKING` panel.
+   choose 2v2 Teams on Play.
 
 The service build is deliberately exported with the Ubuntu Player Profile and
 Matchmaking URLs. The source GDevelop project keeps loopback defaults so it is
 safe for local editing.
+
+Preview and deployment are deliberately separate test lanes. The checked-in
+project is tagged `gdevelop-preview` and points at the LAN services. The export
+script creates a generated copy tagged `local-export` or `deployment-export`;
+it never changes the source project. The current lane and backend addresses are
+visible in Diagnostics.
 
 ## Opening the GDevelop project
 

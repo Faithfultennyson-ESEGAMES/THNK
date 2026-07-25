@@ -34,6 +34,9 @@ process.env.THNK_GECKOS_BRIDGE_PATH = path.join(__dirname, "geckos-bridge.cjs");
 
 const { createControlServer } = require("./control-server.cjs");
 const { sessionManager } = require("./session-manager.cjs");
+const {
+  DevAuthorityRegistration,
+} = require("./dev-authority-registration.cjs");
 const authorityClient = sessionManager.authorityClient;
 
 const manifest = identity.manifest;
@@ -236,20 +239,17 @@ const startAuthority = () => {
 
 const startOutboundAuthority = async () => {
   if (devAuthorityRegistration) {
-    await authorityClient.registerDev({
-      ...authorityIdentity,
-      gameServerUrl: process.env.THNK_GAME_SERVER_URL,
+    const registration = new DevAuthorityRegistration({
+      client: authorityClient,
+      registration: {
+        ...authorityIdentity,
+        gameServerUrl: process.env.THNK_GAME_SERVER_URL,
+      },
+      logger: structuredLogger,
     });
-    structuredLogger.info("authority.dev_registered", {
-      authorityId: identity.authorityId,
-      serverBuildId: identity.serverBuildId,
-    });
+    await registration.register();
     authorityHeartbeatTimer = setInterval(() => {
-      void authorityClient.heartbeatDev().catch((error) =>
-        structuredLogger.warn("authority.heartbeat_failed", {
-          errorCode: error?.code || "matchmaking_unavailable",
-        })
-      );
+      void registration.heartbeat();
     }, 15_000);
     authorityHeartbeatTimer.unref?.();
   }

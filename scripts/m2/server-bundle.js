@@ -43,10 +43,25 @@ const validIdentifier = (value) =>
   typeof value === "string" &&
   /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
 
+const isAlwaysFalseCertificationEvent = (event) =>
+  (event.conditions || []).some(
+    (condition) =>
+      instructionType(condition) ===
+        "BuiltinCommonInstructions::CompareNumbers" &&
+      condition.parameters?.[0] === "0" &&
+      condition.parameters?.[1] === "!=" &&
+      condition.parameters?.[2] === "0"
+  );
+
 const findServerAuthorities = (project) => {
   const matches = [];
   for (const layout of project.layouts || []) {
     for (const event of walkEvents(layout.events)) {
+      // Feature/release projects compile-reference every public extension
+      // function under a literal 0 != 0 condition. Those references prove the
+      // GDevelop surface compiles, but they are not runnable Authority hosts
+      // and must never enter the deployment manifest.
+      if (isAlwaysFalseCertificationEvent(event)) continue;
       for (const action of event.actions || []) {
         if (instructionType(action) !== "THNK_GeckosServer::HostServer")
           continue;

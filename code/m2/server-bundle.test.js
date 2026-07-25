@@ -154,6 +154,45 @@ test("catalogs multiple named authorities deterministically", () => {
   });
 });
 
+test("ignores always-false extension compile references when cataloging authorities", () => {
+  const host = (scene, authorityId) => ({
+    type: { value: "THNK_GeckosServer::HostServer" },
+    parameters: ["", "9208", `"${scene}"`, `"${authorityId}"`],
+  });
+  expect(
+    findServerAuthorities({
+      layouts: [
+        {
+          name: "Bootstrap",
+          events: [
+            { actions: [host("Authority", "real-authority")] },
+            {
+              conditions: [
+                {
+                  type: {
+                    value: "BuiltinCommonInstructions::CompareNumbers",
+                  },
+                  parameters: ["0", "!=", "0"],
+                },
+              ],
+              actions: [host("Authority", "")],
+            },
+          ],
+        },
+        { name: "Authority", events: [] },
+      ],
+    })
+  ).toEqual({
+    authorities: {
+      "real-authority": {
+        bootstrapScene: "Bootstrap",
+        gameScene: "Authority",
+      },
+    },
+    port: 9208,
+  });
+});
+
 test("validates the bundle hash and detects tampering", () => {
   const bundle = makeTemporaryDirectory();
   fs.mkdirSync(path.join(bundle, "runtime"));
