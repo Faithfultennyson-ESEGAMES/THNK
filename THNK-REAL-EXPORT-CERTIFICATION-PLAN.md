@@ -371,8 +371,10 @@ wrong Authority credentials, the original recursive solo implementation, and
 deployment-path caching remain retained beside their passing retries and are
 not rewritten as first-attempt passes.
 
-The automated release decision remains conditional on two deliberately
-separate gates: an audible desktop/Android human-device conversation and
-per-function behavioral observation. All 193 public functions compile in the
-Feature Lab and have a behavior owner, but the current coverage artifact
-correctly does not convert that compile ownership into 193 runtime assertions.
+The automated release decision remains conditional on three deliberately
+separate gates: an audible desktop/Android human-device conversation,
+per-function behavioral observation, and the already-declared off-LAN
+UDP/TURN/NAT deployment matrix. All 193 public functions compile in the Feature
+Lab and have a behavior owner, but the current coverage artifact correctly does
+not convert that compile ownership into 193 runtime assertions. HTTPS tunnels
+prove secure signaling/routing, not production Internet ICE reachability.
