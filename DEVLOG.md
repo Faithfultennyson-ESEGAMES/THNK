@@ -1202,3 +1202,31 @@ voice`).
   intervention. The immediately following full social workflow passed.
 - Final verification: 24 suites, all 101 tests, strict TypeScript, and the
   complete distribution/extension build pass.
+
+## 2026-07-25 - Mobile Feature Lab and friend-play release gate
+
+- Rebuilt the interactive Feature Lab for phone portrait and landscape use: a
+  safe-area-aware bottom tab bar, responsive cards/forms/lists/tables, 44 px
+  class controls, and compact status surfaces replace the old top-crowded
+  mobile layout. Preview-only personas remain isolated from normal exports.
+- Added an on-screen directional pad to the match HUD. Touch presses use the
+  same THNK Client message path as keyboard events and never mutate replicated
+  objects locally. Duel now renders its real two-player capacity instead of the
+  shared FFA scene's four-player label.
+- Added a `mobile-two` browser certification phase with 390x844 portrait and
+  844x390 landscape device metrics. The passing run proved no horizontal
+  overflow, fixed bottom navigation, 42-44 px minimum visible controls, visible
+  touch UI, two distinct signed admissions, synchronized movement, and an
+  Authority-owned score. Artifact: `2026-07-25T23-07-59-064Z-mobile-two`.
+- A real 90-user credential attempt correctly fell through to the production
+  route because those accounts are not in the dev-Authority allowlist; it timed
+  out only because this host has no production orchestrator. The four explicit
+  Feature Lab identities remain the dev shortcut. Four interrupted transient
+  Duel tickets were removed from only the scoped dev queue before the clean
+  proof; no player/profile data was changed.
+- The first four-player compatibility run completed assignment, movement, and
+  scoring but retained a Windows `ERR_NO_BUFFER_SPACE` harness failure. Its
+  clean retry passed with four unique players and one Authority score at
+  `2026-07-25T23-03-12-092Z-four-ffa`. The responsive client build is live at
+  `http://192.168.1.196:8080`; the prior build remains in a timestamped Ubuntu
+  backup.

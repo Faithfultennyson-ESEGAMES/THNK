@@ -65,7 +65,8 @@ Matchmaking service and server artifact.
 
 ## Open the Feature Lab
 
-For the real LAN service path, open this URL in a desktop browser:
+For the real LAN service path, open this URL in a desktop or mobile browser on
+the same Wi-Fi:
 
 ```text
 http://192.168.1.196:8080
@@ -93,14 +94,23 @@ Open it in four separate browser profiles or private windows. In each window:
    lab now provides actual buttons and text fields; keyboard commands are
    retained only as an automation compatibility surface.
 3. Matchmaking connects automatically after login. On Play, choose Contact
-   Duel for a two-window check, or FFA for a four-window check. The global
-   strip shows the real queue state and `X of Y` roster progress.
+   Duel for a two-window/two-phone check, or FFA for four Clients. The global
+   strip shows the real queue state and `X of Y` roster progress. On mobile,
+   use the on-screen directional pad; it sends the same Authority input message
+   as desktop arrow keys.
 4. Use Social to search/add/remove/block players by unique username, Chat for
    world/direct messages, Profile to edit the public username/avatar, and
    Leaderboard to verify persistent Authority-awarded overlap scores. Private
    account first/last names are never loaded into the game client.
 5. To test Teams, run `thnk-stack mode teams`, reconnect the four clients, and
    choose 2v2 Teams on Play.
+
+The development Authority credential is deliberately scoped to the four
+Feature Lab identities. Normal registration/login still works for other users,
+but those users take the production-orchestrator routing path rather than being
+granted access to a developer machine. Add a friend's canonical player ID to
+the dev credential only when that access is intentional, then restart
+Matchmaking followed by the Authority. Keep the allowlist enabled.
 
 The service build is deliberately exported with the Ubuntu Player Profile and
 Matchmaking URLs. The source GDevelop Preview lane also points at those LAN
