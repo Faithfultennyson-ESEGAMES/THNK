@@ -205,6 +205,7 @@ test("validates the bundle hash and detects tampering", () => {
   for (const runtimeFile of [
     "bundle-identity.cjs",
     "control-server.cjs",
+    "dev-empty-session.cjs",
     "jwt-verifier.cjs",
     "matchmaking-authority-client.cjs",
     "player-profile-client.cjs",

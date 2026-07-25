@@ -11,7 +11,7 @@ units=(
 )
 
 usage() {
-  echo "Usage: thnk-stack {start|stop|restart|status|logs|mode ffa|mode teams}"
+  echo "Usage: thnk-stack {start|stop|restart|status|logs|mode duel|mode ffa|mode teams}"
 }
 
 case "${1:-}" in
@@ -36,7 +36,7 @@ case "${1:-}" in
     ;;
   mode)
     case "${2:-}" in
-      ffa) authority_id=feature-lab-ffa; map_id=overlap-ffa ;;
+      duel|ffa) authority_id=feature-lab-ffa; map_id=overlap-ffa ;;
       teams) authority_id=feature-lab-teams; map_id=overlap-teams ;;
       *) usage; exit 2 ;;
     esac

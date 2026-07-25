@@ -37,6 +37,9 @@ const { sessionManager } = require("./session-manager.cjs");
 const {
   DevAuthorityRegistration,
 } = require("./dev-authority-registration.cjs");
+const {
+  DevEmptySessionController,
+} = require("./dev-empty-session.cjs");
 const authorityClient = sessionManager.authorityClient;
 
 const manifest = identity.manifest;
@@ -53,6 +56,9 @@ const outboundAuthorityEnabled = authorityClient.enabled;
 const devAuthorityRegistration =
   process.env.THNK_DEV_AUTHORITY_REGISTER === "true";
 const shutdownTimeout = Number(process.env.THNK_SHUTDOWN_TIMEOUT_MS || 30_000);
+const devEmptySessionTimeout = Number(
+  process.env.THNK_DEV_AUTO_END_EMPTY_MS || 0
+);
 
 if (
   !Number.isInteger(shutdownTimeout) ||
@@ -61,6 +67,19 @@ if (
 )
   throw new Error(
     "THNK_SHUTDOWN_TIMEOUT_MS must be an integer from 5000 to 60000."
+  );
+if (
+  !Number.isInteger(devEmptySessionTimeout) ||
+  devEmptySessionTimeout < 0 ||
+  (devEmptySessionTimeout > 0 &&
+    (devEmptySessionTimeout < 1_000 || devEmptySessionTimeout > 300_000))
+)
+  throw new Error(
+    "THNK_DEV_AUTO_END_EMPTY_MS must be 0 or an integer from 1000 to 300000."
+  );
+if (devEmptySessionTimeout > 0 && !devAuthorityRegistration)
+  throw new Error(
+    "THNK_DEV_AUTO_END_EMPTY_MS is allowed only for a registered development Authority."
   );
 if (
   !Number.isInteger(startupTimeout) ||
@@ -105,6 +124,7 @@ let controlServer;
 let shuttingDown = false;
 let shutdownPromise;
 let authorityHeartbeatTimer;
+let devEmptySessionController;
 
 const authorityIdentity = {
   gameId: identity.gameId,
@@ -163,6 +183,7 @@ const shutdown = (reason = "process_shutdown") => {
   app.once("will-quit", () => clearTimeout(forceExit));
   controlServer?.close();
   clearInterval(authorityHeartbeatTimer);
+  devEmptySessionController?.stop();
   shutdownPromise = Promise.resolve(sessionManager.shutdown(reason))
     .catch((error) =>
       structuredLogger.error("server.shutdown_drain_failed", {
@@ -289,6 +310,14 @@ for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () => shutdown(`signal_${signal.toLowerCase()}`));
 
 sessionManager.on("maximum-duration", () => shutdown("maximum_duration"));
+devEmptySessionController = new DevEmptySessionController({
+  enabled: devAuthorityRegistration && devEmptySessionTimeout > 0,
+  timeoutMs: devEmptySessionTimeout,
+  sessionManager,
+  shutdown,
+  logger: structuredLogger,
+});
+devEmptySessionController.start();
 
 app
   .whenReady()

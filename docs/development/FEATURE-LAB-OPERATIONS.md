@@ -46,8 +46,17 @@ match:
 
 ```bash
 thnk-stack mode ffa
+thnk-stack mode duel
 thnk-stack mode teams
 ```
+
+`duel` selects the FFA Authority rules with a two-player queue. It is the
+fastest real dedicated-Authority check. The development service may set
+`THNK_DEV_AUTO_END_EMPTY_MS` (currently 5000 on the lab host): after the last
+connected player leaves, the Authority waits that grace period, sends the
+normal `session.ended` lifecycle event, exits, and systemd returns a clean
+process to `authority.pull_ready`. The runtime rejects this option unless
+registered development-Authority mode is enabled.
 
 This one-at-a-time switch is only a development-host constraint. A production
 orchestrator launches each assigned Authority in its own isolated process or
@@ -83,17 +92,20 @@ Open it in four separate browser profiles or private windows. In each window:
 2. Use the Play, Social, Chat, Leaderboard, Profile, and Diagnostics tabs. The
    lab now provides actual buttons and text fields; keyboard commands are
    retained only as an automation compatibility surface.
-3. On Play, connect to Matchmaking and choose FFA. All four authenticated
-   clients are required to fill that queue.
-4. Use Social to search/add/remove/block players, Chat for world/direct
-   messages, Profile to edit the public display name, and Leaderboard to verify
-   persistent Authority-awarded overlap scores.
+3. Matchmaking connects automatically after login. On Play, choose Contact
+   Duel for a two-window check, or FFA for a four-window check. The global
+   strip shows the real queue state and `X of Y` roster progress.
+4. Use Social to search/add/remove/block players by unique username, Chat for
+   world/direct messages, Profile to edit the public username/avatar, and
+   Leaderboard to verify persistent Authority-awarded overlap scores. Private
+   account first/last names are never loaded into the game client.
 5. To test Teams, run `thnk-stack mode teams`, reconnect the four clients, and
    choose 2v2 Teams on Play.
 
 The service build is deliberately exported with the Ubuntu Player Profile and
-Matchmaking URLs. The source GDevelop project keeps loopback defaults so it is
-safe for local editing.
+Matchmaking URLs. The source GDevelop Preview lane also points at those LAN
+services; the export script operates on a generated copy and never rewrites
+the source project.
 
 Preview and deployment are deliberately separate test lanes. The checked-in
 project is tagged `gdevelop-preview` and points at the LAN services. The export

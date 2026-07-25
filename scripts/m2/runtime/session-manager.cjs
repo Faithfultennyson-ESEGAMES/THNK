@@ -643,6 +643,11 @@ class SessionManager extends EventEmitter {
       connectionId,
       data: { tags: identity.tags },
     });
+    this.emit("player-connected", {
+      sessionId: identity.sessionId,
+      playerId: identity.playerId,
+      connectionId,
+    });
     return true;
   }
 

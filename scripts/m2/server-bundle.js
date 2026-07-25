@@ -304,6 +304,7 @@ const writeBundleFiles = (bundlePath, project, catalog, compatibility) => {
     `THNK_SERVER_START_TIMEOUT_MS=30000\n` +
       `THNK_SHUTDOWN_TIMEOUT_MS=30000\n` +
       `THNK_MAX_SESSION_DURATION_MS=14400000\n` +
+      `THNK_DEV_AUTO_END_EMPTY_MS=0\n` +
       `THNK_LOG_LEVEL=info\n` +
       `THNK_AUTHORITY_ID=\n` +
       `THNK_MAP_ID=\n` +
@@ -587,6 +588,7 @@ const validateBundle = (bundlePath) => {
     manifest.runtime?.entryPoint,
     `${manifest.runtime?.serverDirectory}/index.html`,
     "runtime/control-server.cjs",
+    "runtime/dev-empty-session.cjs",
     "runtime/bundle-identity.cjs",
     "runtime/geckos-bridge.cjs",
     "runtime/jwt-verifier.cjs",

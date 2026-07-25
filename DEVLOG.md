@@ -1178,3 +1178,27 @@ voice`).
   audio users per Client, mute/unmute, leave/rejoin, and zero browser problems.
   Full Core verification passes 99 tests across 23 suites, strict TypeScript,
   and the complete distribution/extension build.
+
+## 2026-07-25 - Empty-session reset for the reusable dev Authority
+
+- Added `THNK_DEV_AUTO_END_EMPTY_MS` for a registered development Authority.
+  Once the active-player count reaches zero it starts a bounded grace timer;
+  a reconnect cancels the timer, while a still-empty session follows the normal
+  shutdown and signed `session.ended` path.
+- The setting is disabled by default, restricted to 1000-300000 ms, and fails
+  startup unless `THNK_DEV_AUTHORITY_REGISTER=true`. Production
+  orchestrator-provisioned Authorities therefore retain their existing
+  one-process-per-assignment lifecycle.
+- Added unit coverage for grace, reconnect cancellation, a second drain, and
+  disabled/production behavior. Server-bundle validation now requires the new
+  runtime module and the generated configuration documents the option.
+- Added `thnk-stack mode duel`; it reuses the tested FFA Authority rules while
+  Matchmaking supplies the real two-player roster.
+- Exported and deployed Feature Lab Authority artifact
+  `sha256:a56f254c3279e537dbc38be776a30bbd371c3045ae04eaf91e70d00bf9790380`.
+  Live Ubuntu proof observed `dev.session_empty_grace_started`, then
+  `dev.session_empty_shutdown`, a delivered `session.ended` with
+  `dev_players_drained`, and a fresh `authority.pull_ready` without manual
+  intervention. The immediately following full social workflow passed.
+- Final verification: 24 suites, all 101 tests, strict TypeScript, and the
+  complete distribution/extension build pass.
