@@ -369,9 +369,14 @@ Windows two-client matrix, native Ubuntu 24.04/Xvfb matrix, and production
 container gate pass for format-5 build
 `sha256:808e515304088c927c10376d8cccccbbe4a86cdd2edca6d44708eac6cd2b8d6a`.
 The local Matchmaking/Player Profile stand-in passes the published Core
-contract. M7 remains formally open only because the two separately deployed
-companion implementations do not exist yet, so the final real-service
-acceptance criterion cannot honestly be executed or replaced with the stub.
+contract. The separately deployed companion services now also pass the real
+HTTPS Feature Lab path: signed production claiming and dev routing, two
+simultaneous Authorities on separate hosts, eight real browser clients,
+Player Profile fail-closed and explicit local fallback policies, and
+Authority-pulled per-player voice grants. The remaining release-certification
+items are tracked in `THNK-REAL-EXPORT-CERTIFICATION-PLAN.md`; provider-device
+audio and exhaustive per-function behavioral observation remain distinct from
+the completed implementation milestone.
 
 ## 5. Test strategy
 

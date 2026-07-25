@@ -9,7 +9,8 @@ namespace THNK {
   bc.addEventListener("messageerror", (e) =>
     logger.error("An error occured while sending a message!", e)
   );
-  const ownID = "" + Date.now() + Math.random() * 1000;
+  const createID = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const serverID = createID();
   const inProcessListeners = new Set<(event: MessageEvent<MessageTypes>) => void>();
   const post = (data: MessageTypes) => {
     bc.postMessage(data);
@@ -38,20 +39,22 @@ namespace THNK {
     | { message: "connect"; from: string };
 
   export class LocalClientAdapter extends THNK.ClientAdapter {
+    private readonly clientID = createID();
+
     private onBCMessage({ data }: MessageEvent<MessageTypes>) {
-      if (data.message === "msg-for-client" && data.for === ownID)
+      if (data.message === "msg-for-client" && data.for === this.clientID)
         this.onMessage(data.data);
     }
     private boundOnBCMessage = this.onBCMessage.bind(this);
 
     async prepare(runtimeScene: gdjs.RuntimeScene): Promise<void> {
       subscribe(this.boundOnBCMessage);
-      post({ message: "connect", from: ownID });
+      post({ message: "connect", from: this.clientID });
       window.addEventListener("beforeunload", () => this.close());
     }
 
     close() {
-      post({ message: "disconnect", from: ownID });
+      post({ message: "disconnect", from: this.clientID });
       unsubscribe(this.boundOnBCMessage);
     }
 
@@ -59,7 +62,7 @@ namespace THNK {
       post({
         message: "msg-for-server",
         data: message,
-        from: ownID,
+        from: this.clientID,
       });
     }
   }
@@ -91,7 +94,7 @@ namespace THNK {
     }
 
     getServerID(): string {
-      return ownID;
+      return serverID;
     }
   }
 }

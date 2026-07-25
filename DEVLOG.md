@@ -1091,3 +1091,66 @@ voice`).
   certification window. Phase D's 22 simultaneous assignment handoffs remains
   pending a lightweight production claimer; the one-match GDevelop dev
   Authority will not be mislabeled as a 22-session orchestrator.
+
+## 2026-07-25 - Production handoff, dual Authority, voice, and solo certification
+
+- Added the redacted production-handoff runner and passed 90 real logins:
+  88 players formed 22 four-player production assignments while two deliberately
+  underfilled users cancelled. Every RS256 admission token was independently
+  verified for player/session/build/authority scope and no voice grant or
+  private Authority envelope crossed the Client. The first clock-skew-sensitive
+  attempt is retained beside the passing retry; verification now permits only a
+  bounded ten-second issuer/verifier skew.
+- Passed the outbound-only Authority integration: an unreachable developer
+  address was still returned to the Client, production workers claimed their
+  own assignments and voice grants, and Matchmaking made zero outbound requests
+  to either Authority. The two-host browser gate then ran FFA on Ubuntu and
+  Teams on Windows simultaneously with eight registered users, two isolated
+  sessions, authoritative movement/scoring, and screenshot evidence.
+- Re-ran M5/M6 adversarial gates for expired, wrong-session, wrong-player,
+  replayed, wrong-authority, wrong-build, wrong-compatibility, and unknown
+  Authority admissions. Blocked rosters remained fail-closed before GDevelop
+  loaded; reconnect kept identity stable; the illegal edit emitted exactly one
+  signed `trust.violation`; webhook retry and player-document persistence
+  passed.
+- Enabled the server-only live Agora configuration on Ubuntu and passed both
+  direct provider integration and a four-browser HTTPS GDevelop run. Four
+  distinct players published synthetic audio, observed three peers each,
+  muted/unmuted, left/rejoined, and followed an Authority-selected channel
+  reassignment. Two initial browser attempts timed out because the restored
+  dev credential could not claim production-routed work; those reports are
+  retained, and the passing run used the correct production pull worker.
+- Added a real exported-runtime policy gate. With no Player Profile
+  configuration, production fail-closed returned 503 without loading
+  GDevelop; explicit `devMode` plus `local-ephemeral-fallback` started the same
+  signed export with ephemeral health and a clean shutdown. An older M6 bundle
+  exposed as stale during the first attempt is not used as release evidence.
+- Fixed explicit solo mode after browser testing exposed a recursive
+  server/client scene-stack startup. Solo now runs one real non-dedicated
+  Authority; client-only event code executes locally and `SendMessage` feeds
+  the server player's queue. The local adapter also assigns independent server
+  and per-client IDs. A cache-isolated HTTPS export proved one authoritative
+  object moving from real keyboard input without starting a network client.
+  Earlier stuck/loading and deployment-path attempts remain retained.
+- The canonical HTTPS Feature Lab path now serves the corrected solo build.
+  Core verification passes 96 tests, TypeScript, and the complete extension
+  build. Production Docker guidance now allocates 512 MiB `/dev/shm` for
+  Electron/Chromium instead of relying on Docker's small default.
+- Completed the uninterrupted Phase G recovery soak with 90 authenticated
+  users. All 31 client samples had 90 connected users; reconnect waves restored
+  10/30/45/90 users with maximum per-user wave recovery of
+  2.891/4.021/1.765/2.672 seconds. The run completed 5,490 heartbeats, 1,440
+  social reads, 16 controlled chat writes, and 11 queue/cancel cycles with zero
+  operation or identity failures.
+- During that soak, a full Matchmaking systemd restart reauthenticated all 90
+  sockets to the new instance within 12.213 seconds of issuing the restart.
+  The idle dev Authority was separately replaced and emitted
+  `authority.dev_registered`/`authority.pull_ready` within 1.796 seconds of
+  activation. Twenty-seven Linux resource samples found at least 2.98 GiB
+  available memory, Redis at or below 1.86 MiB with an empty slowlog, at most
+  one active PostgreSQL connection, and no query over one second.
+- Restored Player Profile's normal production rate policy after the capacity
+  lane. A separate HTTPS gate proved both production limits: the eleventh
+  Player Profile login returned `rate_limited`, the eleventh Matchmaking find
+  returned `match_rate_limited`, and both admitted the same canonical player
+  after the real 60-second windows expired.

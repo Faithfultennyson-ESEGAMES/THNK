@@ -351,9 +351,28 @@ Completed on 2026-07-22:
 - 90 authenticated Matchmaking sockets, friend-filtered presence,
   multi-session replacement, realtime friend chat, and world-chat moderation.
 
-Still open: production-policy rate-limit recovery, 22 concurrent assignment
-handoffs through lightweight production claimers, two simultaneous exported
-Authorities/eight browsers, negative admission cases, live Agora, the
-30-minute recovery soak, and final release decision. Failed attempts caused by
-fixture policy/idempotency mistakes remain retained beside their passing
-retries and are not rewritten as first-attempt passes.
+Completed on 2026-07-23 through 2026-07-25:
+
+- production-policy 429 and real-window recovery for Player Profile and
+  Matchmaking;
+- 22 concurrent production assignment handoffs for 88 matched users plus two
+  underfilled/cancelled users;
+- two simultaneous exported Authorities on separate Ubuntu and Windows hosts
+  with eight real browsers;
+- negative admission, blocked-player, reconnect-identity, trust-violation, and
+  Player Profile policy lanes;
+- live Agora provider and four-browser synthetic-audio gates;
+- explicit solo and dedicated-Authority paths; and
+- the uninterrupted 90-user, 30-minute recovery soak with all four reconnect
+  waves plus deliberate Matchmaking and Authority restarts.
+
+Failed attempts caused by fixture policy/idempotency mistakes, clock skew,
+wrong Authority credentials, the original recursive solo implementation, and
+deployment-path caching remain retained beside their passing retries and are
+not rewritten as first-attempt passes.
+
+The automated release decision remains conditional on two deliberately
+separate gates: an audible desktop/Android human-device conversation and
+per-function behavioral observation. All 193 public functions compile in the
+Feature Lab and have a behavior owner, but the current coverage artifact
+correctly does not convert that compile ownership into 193 runtime assertions.

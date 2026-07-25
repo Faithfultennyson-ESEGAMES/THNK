@@ -126,13 +126,16 @@ command. The container example is built using the exported bundle as context:
 
 ```text
 docker build -f examples/container/Dockerfile -t thnk-authority:rc .generated/m7/server-bundle
-docker run --rm --network host --env-file C:\secure\thnk-server.env thnk-authority:rc
+docker run --rm --network host --shm-size=512m --env-file C:\secure\thnk-server.env thnk-authority:rc
 ```
 
 On Linux use an absolute Linux path for `--env-file`. Host networking is used
 in this v1 example because WebRTC requires UDP/ICE reachability beyond the two
 HTTP ports; production orchestration must provide equivalent networking and a
-TURN strategy where direct ICE is insufficient.
+TURN strategy where direct ICE is insufficient. The explicit shared-memory
+allocation prevents Chromium/Electron renderer failures under concurrent
+authority activity; size it from observed game load rather than relying on
+Docker's small default `/dev/shm`.
 
 The image runs as the unprivileged `thnk` user. Its Electron command disables
 Chromium's nested process sandbox because Docker's default seccomp policy

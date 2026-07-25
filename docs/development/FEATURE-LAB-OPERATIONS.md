@@ -62,6 +62,19 @@ For the real LAN service path, open this URL in a desktop browser:
 http://192.168.1.196:8080
 ```
 
+The certified HTTPS lane uses the following public origins while the Windows
+TCP forwarders and the user's HTTPS tunnels are active:
+
+```text
+https://app1.solarcal.xyz/cert-a8163b9c/
+https://app2.solarcal.xyz
+https://app3.solarcal.xyz
+```
+
+`app1` is the browser export, `app2` is Player Profile, and `app3` is
+Matchmaking. Authority addresses are returned to the Client in `match.found`;
+Matchmaking never connects into a developer Authority.
+
 Open it in four separate browser profiles or private windows. In each window:
 
 1. Stay on the `IDENTITY` panel and press `1`, `2`, `3`, or `4` once so the
@@ -98,16 +111,18 @@ run the Player Profile repository's `feature-lab:sync`, `feature-lab:audit`, and
 
 ## Current security boundary
 
-This LAN stack uses HTTP for gameplay development. Player sessions and signed
-admission tokens are real; Player Profile remains fail-closed for the dedicated
-Authority. Secure cookies are enabled, so the short-lived access token is the
-working browser credential on HTTP and cookie refresh is reserved for the TLS
-deployment lane.
+The LAN URL is an explicit development shortcut. Player sessions and signed
+admission tokens are real, and Player Profile remains fail-closed for the
+dedicated Authority. Secure cookies and browser voice require the HTTPS lane;
+the short-lived access token is the working browser credential on LAN HTTP.
 
-Agora credentials are stored on the server but browser voice is intentionally
-disabled in this HTTP build. Real microphone and token-refresh testing needs an
-HTTPS client origin and an HTTPS public Matchmaking URL. Missing voice remains
-a controlled voice-only state and does not break login, social features,
+Agora credentials stay on Matchmaking only. A dedicated Authority pulls one
+player-bound grant after signed admission; neither Matchmaking nor the Client
+pushes an unsigned grant into the Authority. The HTTPS certification lane has
+proved four-client cloud publish/subscribe, mute/unmute, leave/rejoin, and
+channel reassignment using synthetic audio. A human audible desktop/Android
+conversation remains a separate device check. Missing voice remains a
+controlled voice-only state and does not break login, social features,
 matchmaking, or gameplay.
 
 ## Fast diagnosis

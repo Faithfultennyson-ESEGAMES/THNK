@@ -1,9 +1,10 @@
 import { createConnection, createServer } from "node:net";
 
 const ubuntuHost = process.env.THNK_CERT_UBUNTU_HOST || "192.168.1.196";
-// The certification host runs FFA and Teams sequentially on the same Linux
-// Authority port. Override THNK_CERT_TEAMS_HOST when validating a genuinely
-// separate second Authority host.
+// Authorities can run sequentially on Ubuntu or as genuinely isolated
+// processes/containers on separately addressable host ports.
+const ffaHost = process.env.THNK_CERT_FFA_HOST || ubuntuHost;
+const ffaPort = Number(process.env.THNK_CERT_FFA_PORT || 9208);
 const teamsHost = process.env.THNK_CERT_TEAMS_HOST || ubuntuHost;
 const teamsPort = Number(process.env.THNK_CERT_TEAMS_PORT || 9208);
 
@@ -11,7 +12,7 @@ const routes = [
   { name: "feature-lab", listenPort: 18080, targetHost: ubuntuHost, targetPort: 8080 },
   { name: "player-profile", listenPort: 19400, targetHost: ubuntuHost, targetPort: 9400 },
   { name: "matchmaking", listenPort: 19300, targetHost: ubuntuHost, targetPort: 9300 },
-  { name: "authority-ffa", listenPort: 19208, targetHost: ubuntuHost, targetPort: 9208 },
+  { name: "authority-ffa", listenPort: 19208, targetHost: ffaHost, targetPort: ffaPort },
   { name: "authority-teams", listenPort: 19210, targetHost: teamsHost, targetPort: teamsPort },
 ];
 

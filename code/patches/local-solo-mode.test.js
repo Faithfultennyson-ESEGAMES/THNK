@@ -21,7 +21,7 @@ const loadSoloAction = () => {
 };
 
 describe("explicit solo mode", () => {
-  test("starts the real local Authority before its in-process client", async () => {
+  test("starts one real non-dedicated local Authority for solo client code", async () => {
     const { action, run } = loadSoloAction();
     const calls = [];
     class LocalServerAdapter {}
@@ -54,12 +54,11 @@ describe("explicit solo mode", () => {
     expect(calls[0][0]).toBe("authority");
     expect(calls[0][1]).toBeInstanceOf(LocalServerAdapter);
     expect(calls[0][3]).toBe("SoloAuthority");
-    expect(calls[1][0]).toBe("client");
-    expect(calls[1][2]).toBeInstanceOf(LocalClientAdapter);
+    expect(calls).toHaveLength(1);
 
     run(runtimeScene, eventsFunctionContext, THNK);
     await new Promise((resolve) => setImmediate(resolve));
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(1);
   });
 
   test("the local transport explicitly delivers within the same process", () => {
@@ -70,5 +69,8 @@ describe("explicit solo mode", () => {
     expect(source).toContain("inProcessListeners");
     expect(source).toContain("queueMicrotask");
     expect(source).toContain("inProcessListeners.add(listener)");
+    expect(source).toContain("private readonly clientID = createID()");
+    expect(source).toContain("return serverID");
+    expect(source).not.toContain("from: ownID");
   });
 });
