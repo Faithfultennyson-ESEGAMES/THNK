@@ -2,6 +2,7 @@ const net = require("net");
 const path = require("path");
 const { app, BrowserWindow } = require("electron");
 const { consoleMethodForLevel } = require("./console-level.cjs");
+const { resolveRendererVisible } = require("./renderer-window.cjs");
 const remoteMain = require("@electron/remote/main");
 const { loadBundleIdentity } = require("./bundle-identity.cjs");
 const { structuredLogger } = require("./structured-logger.cjs");
@@ -58,6 +59,12 @@ const devAuthorityRegistration =
 const shutdownTimeout = Number(process.env.THNK_SHUTDOWN_TIMEOUT_MS || 30_000);
 const devEmptySessionTimeout = Number(
   process.env.THNK_DEV_AUTO_END_EMPTY_MS || 0
+);
+// GDevelop drives its authoritative event loop with requestAnimationFrame.
+// Keeping the renderer visible on the host's virtual display prevents Chromium
+// from reducing that loop to roughly one frame per second.
+const rendererVisible = resolveRendererVisible(
+  process.env.THNK_AUTHORITY_RENDER_VISIBLE
 );
 
 if (
@@ -209,7 +216,7 @@ const startAuthority = () => {
   if (serverStartPromise) return serverStartPromise;
   serverStartPromise = (async () => {
     serverWindow = new BrowserWindow({
-      show: false,
+      show: rendererVisible,
       width: 800,
       height: 600,
       webPreferences: {

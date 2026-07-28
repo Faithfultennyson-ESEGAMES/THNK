@@ -28,8 +28,8 @@ are complete:
   illegal client-side edits (`M1`, `fixtures/m1-remote-authority`).
 - **Headless per-match server export** — `bin/thnk.js` exports a GDevelop
   project's server logic into a self-contained bundle and runs it as one
-  isolated authority process per session (a hidden Electron renderer, no visible
-  window), instead of requiring a desktop GDevelop preview (`M2`,
+  isolated authority process per session (an Electron renderer kept active on
+  a virtual display), instead of requiring a desktop GDevelop preview (`M2`,
   `docs/project/M2-SERVER-EXPORT.md`).
 - **Outbound matchmaking bridge** — a signed claim/handoff contract where an
   Authority asks Matchmaking for its assigned session, acknowledges readiness,

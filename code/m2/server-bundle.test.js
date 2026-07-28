@@ -45,6 +45,18 @@ test("maps Chromium console warnings without escalating them to errors", () => {
   expect(consoleMethodForLevel(3)).toBe("error");
 });
 
+test("keeps the authoritative GDevelop renderer active by default", () => {
+  const { resolveRendererVisible } = require("../../scripts/m2/runtime/renderer-window.cjs");
+
+  expect(resolveRendererVisible(undefined)).toBe(true);
+  expect(resolveRendererVisible("")).toBe(true);
+  expect(resolveRendererVisible("true")).toBe(true);
+  expect(resolveRendererVisible("false")).toBe(false);
+  expect(() => resolveRendererVisible("yes")).toThrow(
+    "THNK_AUTHORITY_RENDER_VISIBLE must be true or false."
+  );
+});
+
 test("normalizes GDevelop inline function identifiers deterministically", () => {
   const serverDirectory = makeTemporaryDirectory();
   fs.writeFileSync(
@@ -210,6 +222,7 @@ test("validates the bundle hash and detects tampering", () => {
     "matchmaking-authority-client.cjs",
     "player-profile-client.cjs",
     "rate-limiter.cjs",
+    "renderer-window.cjs",
     "session-manager.cjs",
     "structured-logger.cjs",
     "voice-token-manager.cjs",

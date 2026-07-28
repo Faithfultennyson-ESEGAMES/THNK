@@ -48,6 +48,14 @@ or newer; the release gate uses Ubuntu 24.04. If `node_modules/electron/dist`
 is absent after dependency installation, run
 `node node_modules/electron/install.js` before configuring the sandbox.
 
+## Movement updates arrive about once per second
+
+Confirm that the Authority runs under Xvfb and that
+`THNK_AUTHORITY_RENDER_VISIBLE=true`. GDevelop drives the authoritative scene
+with `requestAnimationFrame`; a hidden Chromium renderer can throttle that loop
+to roughly 1 FPS even though network round trips remain fast. Do not diagnose
+this cadence as tunnel latency until the Authority renderer setting is checked.
+
 ## Shutdown hangs or exits 1
 
 The runtime gives player disconnects, ordered Player Profile writes, and signed

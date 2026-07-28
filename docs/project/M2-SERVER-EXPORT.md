@@ -14,15 +14,19 @@
 ## Outcome
 
 M2 exports a GDevelop JSON project into a validated, self-contained THNK server
-directory. The artifact runs the authoritative game in a hidden Electron
-window, without the GDevelop editor or THNK source tree. Local Windows and
+directory. The artifact runs the authoritative game in an Electron window
+kept active on the host's virtual display, without the GDevelop editor or THNK
+source tree. Local Windows and
 remote Ubuntu 24.04 runs installed only the generated bundle's dependencies,
 reached `THNK_SERVER_READY port=9208`, and passed disconnect/reconnect tests
 with 8 and 16 isolated browser clients.
 
 The runtime is windowless to an operator but is not rendererless: current
 GDevelop game code needs its DOM/renderer, and the Geckos adapter needs
-Node/Electron. Linux therefore runs Electron inside Xvfb. Container image
+Node/Electron. Its renderer must remain visible to the virtual display because
+GDevelop's authoritative loop uses `requestAnimationFrame`; hiding it can
+throttle simulation to roughly one frame per second. Linux therefore runs
+Electron inside Xvfb with `THNK_AUTHORITY_RENDER_VISIBLE=true`. Container image
 publication is deferred to M5, but the underlying packaged Linux/Xvfb runtime
 is now verified.
 

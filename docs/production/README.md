@@ -137,6 +137,11 @@ allocation prevents Chromium/Electron renderer failures under concurrent
 authority activity; size it from observed game load rather than relying on
 Docker's small default `/dev/shm`.
 
+Keep `THNK_AUTHORITY_RENDER_VISIBLE=true` (the generated default). The window
+is visible only inside Xvfb, but this keeps GDevelop's `requestAnimationFrame`
+authority loop active. Setting it to `false` can reduce a hidden Chromium
+renderer to roughly one simulation frame per second.
+
 The image runs as the unprivileged `thnk` user. Its Electron command disables
 Chromium's nested process sandbox because Docker's default seccomp policy
 blocks the namespace operation it requires; isolation is provided by the

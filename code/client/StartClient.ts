@@ -5,7 +5,10 @@ import {
   ConnectionStartMessage,
 } from "t-h-n-k";
 import { applyGameStateSnapshotToScene } from "client/ApplyGameStateSnapshot";
-import { setConnectionState } from "client/ClientConnectionState";
+import {
+  getConnectionState,
+  setConnectionState,
+} from "client/ClientConnectionState";
 import { THNKClientContext } from "client/THNKClientContext";
 import { loadScene } from "utils/LoadScene";
 import { startConnectionRequestRetry } from "client/ConnectionRequestRetry";
@@ -20,6 +23,18 @@ export const startClient = async (
   runtimeScene: gdjs.RuntimeScene,
   adapter: ClientAdapter
 ) => {
+  const connectionState = getConnectionState();
+  if (
+    connectionState === "connecting" ||
+    connectionState === "loading" ||
+    connectionState === "connected"
+  ) {
+    adapter.close();
+    logger.warn(
+      `Ignored duplicate client start while connection state is ${connectionState}.`
+    );
+    return;
+  }
   setConnectionState("connecting");
   const sceneStack = runtimeScene.getGame().getSceneStack();
   try {

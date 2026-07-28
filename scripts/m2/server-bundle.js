@@ -302,6 +302,7 @@ const writeBundleFiles = (bundlePath, project, catalog, compatibility) => {
   fs.writeFileSync(
     path.join(bundlePath, "config.example.env"),
     `THNK_SERVER_START_TIMEOUT_MS=30000\n` +
+      `THNK_AUTHORITY_RENDER_VISIBLE=true\n` +
       `THNK_SHUTDOWN_TIMEOUT_MS=30000\n` +
       `THNK_MAX_SESSION_DURATION_MS=14400000\n` +
       `THNK_DEV_AUTO_END_EMPTY_MS=0\n` +
@@ -595,6 +596,7 @@ const validateBundle = (bundlePath) => {
     "runtime/matchmaking-authority-client.cjs",
     "runtime/player-profile-client.cjs",
     "runtime/rate-limiter.cjs",
+    "runtime/renderer-window.cjs",
     "runtime/session-manager.cjs",
     "runtime/structured-logger.cjs",
     "runtime/voice-token-manager.cjs",

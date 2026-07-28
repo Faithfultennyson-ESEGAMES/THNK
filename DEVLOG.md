@@ -1230,3 +1230,28 @@ voice`).
   `2026-07-25T23-03-12-092Z-four-ffa`. The responsive client build is live at
   `http://192.168.1.196:8080`; the prior build remains in a timestamped Ubuntu
   backup.
+
+## 2026-07-28 - Authority render-loop latency correction
+
+- Reproduced the reported slow movement through the LAN-only Preview/export
+  route: Player Profile, Matchmaking, and Authority were all reached directly
+  over `192.168.1.196`, yet the automated input-to-authoritative-snapshot gate
+  measured 977-981 ms. Matchmaking QoS was only tens of milliseconds, ruling
+  out the HTTPS tunnel as the cause.
+- Isolated the delay to Chromium throttling GDevelop's
+  `requestAnimationFrame` game loop while the Electron Authority window was
+  hidden. Keeping the renderer active on its Xvfb virtual display reduced the
+  same measured path to 108-122 ms and preserved Authority-owned movement and
+  overlap scoring.
+- Added `THNK_AUTHORITY_RENDER_VISIBLE`, defaulting to `true`, strict
+  true/false validation, generated configuration, runtime unit coverage, and
+  production/troubleshooting documentation. Linux and container Authorities
+  remain operator-windowless because the active renderer lives inside Xvfb.
+- Exported and validated the final Feature Lab server artifact at
+  `sha256:7b0a5bc303e1e665cf44c558eba1e0044994abb7d42ee24dcfb36349a3872142`,
+  deployed it on Ubuntu, updated the registered dev route, and obtained two
+  clean two-player Duel passes after normal session teardown.
+- Also guarded Client startup against duplicate pending connections; a second
+  MatchFound/StartClient invocation now closes the redundant adapter instead
+  of creating competing transports. Final Core verification: 24 suites and
+  103 tests passed, followed by strict TypeScript.
