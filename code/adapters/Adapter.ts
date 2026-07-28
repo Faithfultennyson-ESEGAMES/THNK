@@ -6,6 +6,7 @@ import {
   type Builder,
 } from "t-h-n-k";
 import { inflateRaw, deflateRaw } from "pako";
+import { resetAuthorityLatency } from "client/AuthorityLatency";
 
 const decompress = (data: Uint8Array): Uint8Array =>
   inflateRaw(data) as Uint8Array;
@@ -39,8 +40,9 @@ export abstract class ClientAdapter {
       ServerMessage.getRootAsServerMessage(new ByteBuffer(decompress(bytes)))
     );
   }
-  protected onDisconnection(): void {
-    setConnectionState("disconnected");
+  protected onDisconnection(reason = "transport_disconnected"): void {
+    resetAuthorityLatency();
+    setConnectionState("disconnected", reason);
   }
 }
 

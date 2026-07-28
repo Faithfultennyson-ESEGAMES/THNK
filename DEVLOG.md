@@ -1255,3 +1255,27 @@ voice`).
   MatchFound/StartClient invocation now closes the redundant adapter instead
   of creating competing transports. Final Core verification: 24 suites and
   103 tests passed, followed by strict TypeScript.
+
+## 2026-07-28 - Certified Client connection and Authority-latency surface
+
+- Added a stable GDevelop Client connection state machine for connecting,
+  connected, failed, disconnected, and reconnected states. Each transition has
+  an independently consumable event pulse and a stable error expression, so a
+  game can build its own status and recovery UI without inspecting adapters.
+- Added application-level Client ping/Authority pong protocol messages and a
+  smoothed in-session RTT measurement. `AuthorityLatencyMs` measures the actual
+  gameplay transport after assignment; it is deliberately separate from
+  Matchmaking's pre-match regional QoS.
+- Replied to pings inside the authoritative server message path and reset
+  lifecycle/latency state on adapter replacement, preventing one player's
+  reconnect state from leaking into another Client context.
+- Added lifecycle, latency, extension-wrapper, and duplicate-start regression
+  coverage. Final local verification passed 27 suites and 108 tests, strict
+  TypeScript, the complete browser/adapter/extension build, and a validated
+  two-Authority Feature Lab artifact at
+  `sha256:fc1696d93fb4afbd76b3706ad8e6cb531098f503e5958b258ea1bbdcb20e9e91`.
+- Deployed that exact artifact to Ubuntu with a timestamped rollback. The live
+  Duel Client reported Core state `connected`, 50 ms application-level
+  Authority RTT, 109 ms input-to-authoritative-snapshot latency, and one
+  Authority-owned overlap score. A subsequent four-player FFA retained four
+  distinct canonical identities and an Authority-owned score.

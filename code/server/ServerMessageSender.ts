@@ -7,9 +7,30 @@ import {
   ConnectionStartMessage,
   SceneSwitchMessage,
   ResumePreviousSceneMessage,
+  ServerPongMessage,
 } from "t-h-n-k";
 import { makeSceneSnapshot } from "server/MakeSceneSnaphsot";
 import type { Snapshot } from "server/SnaphsotManager";
+
+export const sendServerPongMessageTo = (
+  userID: string,
+  adapter: ServerAdapter,
+  sentAt: number
+) => {
+  const builder = new Builder(64);
+  ServerPongMessage.startServerPongMessage(builder);
+  ServerPongMessage.addSentAt(builder, sentAt);
+  ServerPongMessage.addServerAt(builder, Date.now());
+  adapter.sendServerMessageTo(
+    userID,
+    builder,
+    ServerMessage.createServerMessage(
+      builder,
+      ServerMessageContent.ServerPongMessage,
+      ServerPongMessage.endServerPongMessage(builder)
+    )
+  );
+};
 
 export const sendConnectionStartMessageTo = (
   userID: string,

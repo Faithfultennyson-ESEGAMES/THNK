@@ -3,6 +3,7 @@ import {
   ResumePreviousSceneMessage,
   SceneSwitchMessage,
   ServerMessageContent,
+  ServerPongMessage,
 } from "t-h-n-k";
 import { applyGameStateSnapshotToScene } from "client/ApplyGameStateSnapshot";
 import { applySceneUpdateToScene } from "client/ApplySceneUpdate";
@@ -10,12 +11,17 @@ import { THNKClientContext } from "./THNKClientContext";
 import { loadScene, pauseScene } from "utils/LoadScene";
 import { sendClientMessage } from "client/ClientMessageSender";
 import { AUTHORITATIVE_EDIT_MESSAGE } from "utils/TrustProtocol";
+import {
+  acceptAuthorityLatencyPong,
+  maybeSendAuthorityLatencyProbe,
+} from "client/AuthorityLatency";
 
 const logger = new gdjs.Logger("THNK - Client");
 const runClientTickPreEvent = async (runtimeScene: gdjs.RuntimeScene) => {
   if (!runtimeScene.thnkClient) return;
   const { adapter } = runtimeScene.thnkClient;
   const game = runtimeScene.getGame();
+  maybeSendAuthorityLatencyProbe(adapter);
   for (const message of adapter.getPendingMessages()) {
     const messageType = message.contentType();
     switch (messageType) {
@@ -83,6 +89,10 @@ const runClientTickPreEvent = async (runtimeScene: gdjs.RuntimeScene) => {
         // Make sure next messages are applied to the new scene.
         runtimeScene = resumedScene;
 
+        continue;
+      case ServerMessageContent.ServerPongMessage:
+        const pong = message.content(new ServerPongMessage()) as ServerPongMessage;
+        acceptAuthorityLatencyPong(pong.sentAt());
         continue;
       default:
         logger.error(

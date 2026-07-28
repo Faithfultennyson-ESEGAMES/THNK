@@ -2,10 +2,11 @@ include "ConnectionStartMessage.fbs";
 include "GameStateUpdateMessage.fbs";
 include "SceneSwitchMessage.fbs";
 include "ResumePreviousSceneMessage.fbs";
+include "ServerPongMessage.fbs";
 
 namespace THNK;
 
-union ServerMessageContent { ConnectionStartMessage, GameStateUpdateMessage, SceneSwitchMessage, ResumePreviousSceneMessage }
+union ServerMessageContent { ConnectionStartMessage, GameStateUpdateMessage, SceneSwitchMessage, ResumePreviousSceneMessage, ServerPongMessage }
 table ServerMessage {
   content: ServerMessageContent (required);
 }

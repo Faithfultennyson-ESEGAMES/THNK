@@ -76,7 +76,7 @@ The certified HTTPS lane uses the following public origins while the Windows
 TCP forwarders and the user's HTTPS tunnels are active:
 
 ```text
-https://app1.solarcal.xyz/cert-a8163b9c/
+https://app1.solarcal.xyz/cert-social-20260728/
 https://app2.solarcal.xyz
 https://app3.solarcal.xyz
 ```
@@ -84,6 +84,10 @@ https://app3.solarcal.xyz
 `app1` is the browser export, `app2` is Player Profile, and `app3` is
 Matchmaking. Authority addresses are returned to the Client in `match.found`;
 Matchmaking never connects into a developer Authority.
+
+Use the immutable `cert-social-20260728` path for this release. The origin root
+may retain an older edge-cached GDevelop script even after the Ubuntu files are
+replaced; a new immutable path prevents mixed-version HTML and JavaScript.
 
 Open it in four separate browser profiles or private windows. In each window:
 
@@ -112,16 +116,19 @@ granted access to a developer machine. Add a friend's canonical player ID to
 the dev credential only when that access is intentional, then restart
 Matchmaking followed by the Authority. Keep the allowlist enabled.
 
-The service build is deliberately exported with the Ubuntu Player Profile and
-Matchmaking URLs. The source GDevelop Preview lane also points at those LAN
-services; the export script operates on a generated copy and never rewrites
-the source project.
+The checked-in GDevelop Preview lane deliberately uses the hosted HTTPS Player
+Profile and Matchmaking services (`app2` and `app3`), then connects directly to
+the LAN Authority address returned in the signed assignment. This proves the
+hosted-backend/local-Authority development workflow. A generated local export
+instead defaults to the Ubuntu LAN Player Profile and Matchmaking URLs. The
+export script operates on a generated copy and never rewrites the source
+project.
 
-Preview and deployment are deliberately separate test lanes. The checked-in
-project is tagged `gdevelop-preview` and points at the LAN services. The export
-script creates a generated copy tagged `local-export` or `deployment-export`;
-it never changes the source project. The current lane and backend addresses are
-visible in Diagnostics.
+Preview, local export, and deployment export are deliberately separate test
+lanes. The checked-in project is tagged `gdevelop-preview`; the export script
+creates a generated copy tagged `local-export` or `deployment-export`. It never
+changes the source project. The current lane and backend addresses are visible
+in Diagnostics.
 
 ## Opening the GDevelop project
 

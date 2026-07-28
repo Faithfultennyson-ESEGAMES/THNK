@@ -1,0 +1,6 @@
+namespace THNK;
+
+table ServerPongMessage {
+  sentAt: double;
+  serverAt: double;
+}

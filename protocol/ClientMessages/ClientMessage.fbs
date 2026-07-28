@@ -1,9 +1,10 @@
 include "ConnectionRequestMessage.fbs";
 include "ClientInputMessage.fbs";
+include "ClientPingMessage.fbs";
 
 namespace THNK;
 
-union ClientMessageContent { ConnectionRequestMessage, ClientInputMessage }
+union ClientMessageContent { ConnectionRequestMessage, ClientInputMessage, ClientPingMessage }
 table ClientMessage {
   content: ClientMessageContent (required);
 }

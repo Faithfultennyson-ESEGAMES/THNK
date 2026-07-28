@@ -15,7 +15,7 @@ import { startConnectionRequestRetry } from "client/ConnectionRequestRetry";
 
 const logger = new gdjs.Logger("THNK - Client");
 const fail = (reason: string) => {
-  setConnectionState("failed");
+  setConnectionState("failed", reason);
   logger.error("Connection failed: " + reason);
 };
 

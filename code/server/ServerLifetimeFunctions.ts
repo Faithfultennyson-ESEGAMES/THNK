@@ -1,9 +1,14 @@
-import { ClientInputMessage, ClientMessageContent } from "t-h-n-k";
+import {
+  ClientInputMessage,
+  ClientMessageContent,
+  ClientPingMessage,
+} from "t-h-n-k";
 import {
   sendGameStateUpdateMessageTo,
   sendConnectionStartMessageTo,
   sendSceneSwitchMessageToAll,
   sendSceneResumeMessageToSome,
+  sendServerPongMessageTo,
 } from "server/ServerMessageSender";
 import {
   addSerializedMessageToTheQueue,
@@ -45,6 +50,12 @@ const runServerTickPreEvent = (runtimeScene: gdjs.RuntimeScene) => {
           }
           const serializedExtraData = clientMessage.contentArray();
           addSerializedMessageToTheQueue(userID, name, serializedExtraData);
+          continue;
+        case ClientMessageContent.ClientPingMessage:
+          const ping = message.content(
+            new ClientPingMessage()
+          ) as ClientPingMessage;
+          sendServerPongMessageTo(userID, adapter, ping.sentAt());
           continue;
         default:
           logger.error(
