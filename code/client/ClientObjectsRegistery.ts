@@ -78,26 +78,34 @@ export class ClientObjectsRegistery {
   }
 
   hasAuthoritativeEdits(): boolean {
+    return this.describeAuthoritativeEdits().length > 0;
+  }
+
+  describeAuthoritativeEdits(): string[] {
+    const edits: string[] = [];
     for (const [id, state] of this.authoritativeStates) {
       const object = this.objectsRegistery.get(id);
       if (!object) continue;
+      const prefix = `${object.getName()}#${id}`;
+      if (object.getX() !== state.x) edits.push(`${prefix}.x`);
+      if (object.getY() !== state.y) edits.push(`${prefix}.y`);
+      if (object.getAngle() !== state.angle) edits.push(`${prefix}.angle`);
+      if (object.getWidth() !== state.width) edits.push(`${prefix}.width`);
+      if (object.getHeight() !== state.height) edits.push(`${prefix}.height`);
+      if (object.getLayer() !== state.layer) edits.push(`${prefix}.layer`);
       if (
-        object.getX() !== state.x ||
-        object.getY() !== state.y ||
-        object.getAngle() !== state.angle ||
-        object.getWidth() !== state.width ||
-        object.getHeight() !== state.height ||
-        object.getLayer() !== state.layer ||
-        object.getZOrder() !== state.zOrder ||
         JSON.stringify(object.getVariables().get("State").toJSObject()) !==
-          JSON.stringify(state.state) ||
+        JSON.stringify(state.state)
+      )
+        edits.push(`${prefix}.State`);
+      if (
         JSON.stringify(
           object.getVariables().get("PlayerState").toJSObject()
         ) !== JSON.stringify(state.playerState)
       )
-        return true;
+        edits.push(`${prefix}.PlayerState`);
     }
-    return false;
+    return edits;
   }
 
   clear() {

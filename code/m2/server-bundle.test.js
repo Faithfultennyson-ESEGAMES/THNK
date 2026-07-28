@@ -9,6 +9,7 @@ const {
   hashBundleContent,
   normalizeGeneratedIdentifiers,
   patchRuntimeOptions,
+  stageProjectResources,
   validateBundle,
 } = require("../../scripts/m2/server-bundle");
 
@@ -92,6 +93,53 @@ test("passes the Geckos bridge path into the generated runtime", () => {
   ).toContain(
     "const game = ((gdjs.projectData.firstLayout = gdjs.runtimeGameOptions.thnkAuthorityBootstrapScene"
   );
+  expect(
+    fs.readFileSync(path.join(serverDirectory, "index.html"), "utf8")
+  ).toContain("game.enableMetrics(false)");
+});
+
+test("stages nested and external project resources into a self-contained export", () => {
+  const root = makeTemporaryDirectory();
+  const projectRoot = path.join(root, "project");
+  const staging = path.join(root, "staging");
+  fs.mkdirSync(path.join(projectRoot, "assets", "characters"), {
+    recursive: true,
+  });
+  fs.mkdirSync(staging);
+  fs.writeFileSync(
+    path.join(projectRoot, "assets", "characters", "player.png"),
+    "player"
+  );
+  fs.writeFileSync(path.join(root, "shared.png"), "shared");
+  const project = {
+    resources: {
+      resources: [
+        { file: "assets/characters/player.png" },
+        { file: "../shared.png" },
+        { file: "https://cdn.example.test/remote.png" },
+      ],
+    },
+  };
+
+  stageProjectResources(project, path.join(projectRoot, "game.json"), staging);
+
+  expect(project.resources.resources.map(({ file }) => file)).toEqual([
+    "assets/characters/player.png",
+    "_thnk-resources/0000-shared.png",
+    "https://cdn.example.test/remote.png",
+  ]);
+  expect(
+    fs.readFileSync(
+      path.join(staging, "assets", "characters", "player.png"),
+      "utf8"
+    )
+  ).toBe("player");
+  expect(
+    fs.readFileSync(
+      path.join(staging, "_thnk-resources", "0000-shared.png"),
+      "utf8"
+    )
+  ).toBe("shared");
 });
 
 test("finds one literal Geckos server entry", () => {

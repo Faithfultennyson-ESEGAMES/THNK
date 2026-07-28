@@ -146,6 +146,55 @@ const applyLegacyDefaultAuthority = (project, catalog) => {
   }
 };
 
+const isRemoteResource = (file) =>
+  /^(?:[a-z]+:)?\/\//i.test(file) ||
+  /^(?:data|blob):/i.test(file);
+
+const stageProjectResources = (project, sourcePath, staging) => {
+  const sourceRoot = path.dirname(sourcePath);
+  const stagedBySource = new Map();
+  let externalIndex = 0;
+  for (const resource of project.resources?.resources || []) {
+    const file = resource?.file;
+    if (typeof file !== "string" || file.length === 0 || isRemoteResource(file))
+      continue;
+    const absoluteSource = path.resolve(sourceRoot, file);
+    if (!fs.existsSync(absoluteSource) || !fs.statSync(absoluteSource).isFile())
+      throw new Error(`Project resource does not exist: ${file}`);
+
+    let relativeTarget = stagedBySource.get(absoluteSource);
+    if (!relativeTarget) {
+      const sourceRelative = path.relative(sourceRoot, absoluteSource);
+      const isInsideProject =
+        sourceRelative !== "" &&
+        sourceRelative !== ".." &&
+        !sourceRelative.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(sourceRelative);
+      relativeTarget = isInsideProject
+        ? sourceRelative
+        : path.join(
+            "_thnk-resources",
+            `${String(externalIndex++).padStart(4, "0")}-${path.basename(
+              absoluteSource
+            )}`
+          );
+      const absoluteTarget = path.resolve(staging, relativeTarget);
+      const stagingRelative = path.relative(staging, absoluteTarget);
+      if (
+        stagingRelative === ".." ||
+        stagingRelative.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(stagingRelative)
+      )
+        throw new Error(`Unsafe staged resource path: ${file}`);
+      fs.mkdirSync(path.dirname(absoluteTarget), { recursive: true });
+      fs.copyFileSync(absoluteSource, absoluteTarget);
+      relativeTarget = relativeTarget.replace(/\\/g, "/");
+      stagedBySource.set(absoluteSource, relativeTarget);
+    }
+    resource.file = relativeTarget;
+  }
+};
+
 const listFiles = (root, current = root) => {
   const files = [];
   for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
@@ -256,7 +305,7 @@ const patchRuntimeOptions = (serverDirectory) => {
     indexPath,
     indexSource.replace(
       constructor,
-      "((gdjs.projectData.firstLayout = gdjs.runtimeGameOptions.thnkAuthorityBootstrapScene || gdjs.projectData.firstLayout), new gdjs.RuntimeGame(gdjs.projectData, gdjs.runtimeGameOptions));"
+      "((gdjs.projectData.firstLayout = gdjs.runtimeGameOptions.thnkAuthorityBootstrapScene || gdjs.projectData.firstLayout), ((game) => (game.enableMetrics(false), game))(new gdjs.RuntimeGame(gdjs.projectData, gdjs.runtimeGameOptions)));"
     )
   );
 };
@@ -419,6 +468,7 @@ const exportServer = ({
   project.properties.latestCompilationDirectory = "server";
 
   try {
+    stageProjectResources(project, sourcePath, staging);
     fs.writeFileSync(projectBuildPath, `${JSON.stringify(project, null, 2)}\n`);
     runGDevelop(
       [
@@ -699,5 +749,6 @@ module.exports = {
   normalizeGeneratedIdentifiers,
   patchRuntimeOptions,
   runBundle,
+  stageProjectResources,
   validateBundle,
 };

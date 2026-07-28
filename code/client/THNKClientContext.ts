@@ -38,8 +38,16 @@ export class THNKClientContext {
       JSON.stringify(
         this.runtimeScene.getVariables().get("State").toJSObject()
       ) !== JSON.stringify(this.authoritativeState);
-    if (!sceneEdited && !this.objectsRegistery.hasAuthoritativeEdits())
+    const objectEdits = this.objectsRegistery.describeAuthoritativeEdits();
+    if (!sceneEdited && objectEdits.length === 0)
       return false;
+    (globalThis as any).THNKTrustDiagnostics = {
+      timestamp: now,
+      edits: [
+        ...(sceneEdited ? ["Scene.State"] : []),
+        ...objectEdits,
+      ].slice(0, 32),
+    };
     if (now - this.lastViolationReportAt < 5_000) return false;
     this.lastViolationReportAt = now;
     return true;

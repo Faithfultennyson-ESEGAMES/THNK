@@ -1279,3 +1279,23 @@ voice`).
   Authority RTT, 109 ms input-to-authoritative-snapshot latency, and one
   Authority-owned overlap score. A subsequent four-player FFA retained four
   distinct canonical identities and an Authority-owned score.
+
+## 2026-07-28 - Combat Lab exporter and trust hardening
+
+- Extended server export resource staging so a GDevelop project with nested or
+  external local assets becomes self-contained. This fixed the purchased
+  template's missing-resource failures and has direct regression coverage.
+- Added field-level client-edit diagnostics without serializing values or
+  player IDs. Position, angle, size, layer, `State`, and `PlayerState` remain
+  trust-protected. GDevelop's presentation-only z-order is restored but no
+  longer creates a false violation.
+- Disabled normal GDevelop player analytics in exported Authority runtimes;
+  hidden servers no longer create unrelated analytics sessions.
+- The private Combat Lab conversion exposed and fixed current GDevelop
+  center-coordinate usage and Authority projectile tunneling. The deterministic
+  harness now includes a 100 ms frame-spike projectile sweep.
+- Final Core verification passes 27 suites / 109 tests, strict TypeScript, and
+  full build. The exported Combat artifact
+  `sha256:aabeeb65a6617ef841312ae522403ba724d95b38bb866a7fdc4b9cb10df6da54`
+  passed a completed live Duel with Player Profile persistence and a live
+  four-player Survival identity-isolation run.

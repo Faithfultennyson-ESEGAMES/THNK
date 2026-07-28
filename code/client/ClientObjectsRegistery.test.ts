@@ -27,6 +27,9 @@ test("restores synchronized object properties changed by client events", () => {
     zOrder: 1,
   };
   const object = {
+    getName() {
+      return "Player";
+    },
     getX() {
       return properties.x;
     },
@@ -78,13 +81,25 @@ test("restores synchronized object properties changed by client events", () => {
   registry.registerObject(1, object);
   registry.captureAuthoritativeState();
 
+  // Layer sorting and rendering behaviors are allowed to adjust presentation
+  // order locally. It is restored from the Authority but is not a gameplay
+  // trust incident.
+  object.setZOrder(999);
+  expect(registry.describeAuthoritativeEdits()).toEqual([]);
+
   object.setX(1096);
   object.setY(-1);
   object.getVariables().get("State").getChild("Score").setNumber(999);
+  expect(registry.describeAuthoritativeEdits()).toEqual([
+    "Player#1.x",
+    "Player#1.y",
+    "Player#1.State",
+  ]);
   registry.restoreAuthoritativeState();
 
   expect(object.getX()).toBe(96);
   expect(object.getY()).toBe(240);
+  expect(object.getZOrder()).toBe(1);
   expect(
     object.getVariables().get("State").getChild("Score").getAsNumber()
   ).toBe(0);
