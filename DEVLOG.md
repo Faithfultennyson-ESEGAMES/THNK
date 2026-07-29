@@ -1418,3 +1418,23 @@ voice`).
   A maintained live Chrome certificate restored the same authenticated player
   through the OAuth return contract, cleaned the callback URL, connected to
   Matchmaking, opened Voice, and found no fatal console error.
+
+## 2026-07-29 - Provider-collision UX and SMTP activation
+
+- Verified that the reported `account_link_required` response protected an
+  existing email/password identity; it was not a failure to create an unused
+  Google identity. The service continues to require the existing player to
+  authenticate before linking Google.
+- Provider callback errors now return to the allowlisted Client without
+  retaining the provider code. Feature Lab displays a clear recovery path and
+  exposes **Link Google account** from the authenticated Profile screen.
+  Preview hides Google controls and continues to use its isolated developer
+  personas.
+- Added a reusable secret-safe SMTP installer. Installed the supplied Titan
+  port-587 configuration with TLS required and a timestamped environment
+  backup. SMTP authentication/transport verification passed, the public reset
+  endpoint is active, and a real reset request was accepted without a delivery
+  failure.
+- Redeployed Player Profile and the versioned Feature Lab with independent
+  rollback snapshots. Live Chrome passed collision recovery, callback cleanup,
+  normal session restoration, Matchmaking, Voice, and fatal-error checks.
