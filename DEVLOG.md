@@ -1400,3 +1400,21 @@ voice`).
   nonempty state binding, and only `openid email profile` scopes. Interactive
   Google account selection, consent, callback completion, and account-linking
   conflict behavior remain human acceptance steps.
+
+## 2026-07-29 - Google return-path production certification
+
+- The interactive Google provider callback was confirmed server-side, but the
+  production Client returned to its sign-in screen because Player Profile
+  session restoration raced the scene's production URL configuration.
+- Player Profile now waits for the configured backend, retries bounded
+  transport-only bootstrap failures, assigns readable collision-safe provider
+  usernames, and upgrades former generated placeholders on the next provider
+  login. Google real names remain private and the Google image is retained as
+  the initial avatar.
+- The Feature Lab exposes both Google sign-in and Google account-creation
+  controls and its deployment exporter versions every local JavaScript asset
+  so CDN/browser caches cannot mix extension releases.
+- The refreshed production artifact was deployed with a timestamped rollback.
+  A maintained live Chrome certificate restored the same authenticated player
+  through the OAuth return contract, cleaned the callback URL, connected to
+  Matchmaking, opened Voice, and found no fatal console error.
