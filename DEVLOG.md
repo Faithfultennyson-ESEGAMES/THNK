@@ -1336,3 +1336,28 @@ voice`).
   build, real PostgreSQL version transitions, all 300 cross-service GDevelop
   wrappers in three lanes (900 executions), Feature Lab audit, and release-lane
   isolation.
+
+## 2026-07-29 - Cross-service manual release checklist
+
+- Updated the real-export certification baseline from its historical
+  193-function inventory to the current 300 public functions. Every function
+  now compiles and executes through its real GDevelop wrapper in Preview,
+  local-export, and deployment-export lanes (900 executions total).
+- Added one human acceptance checklist covering identity/password recovery,
+  private profile fields, avatar version/cache behavior, Google Web login and
+  linking, social notifications, realtime world/direct messaging,
+  two-/four-player queues, parties/private lobbies, authoritative gameplay,
+  voice, reconnect/fault behavior, and later Android packaging.
+- Kept every shortcut and production path as an independent result: Preview,
+  local export, deployment export, dev Authority, orchestrator-provisioned
+  Authority, solo, dedicated Authority, Profile ephemeral fallback, and
+  fail-closed Profile access cannot substitute for one another.
+- Rechecked the Linux host without assuming it was offline. Player Profile,
+  Matchmaking, Feature Lab, Combat Lab, and both dedicated Authorities were
+  active. The public `app1`, `app2`, and `app3` endpoints each returned HTTP
+  502, isolating the current public failure to the HTTPS tunnel layer rather
+  than the THNK services.
+- Real SMTP delivery and real Google Web OAuth remain explicitly blocked until
+  their external credentials/provider configuration and the HTTPS tunnels are
+  active; neither is recorded as a product-code failure or a passing provider
+  test.

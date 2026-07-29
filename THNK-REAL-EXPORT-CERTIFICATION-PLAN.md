@@ -1,6 +1,7 @@
 # THNK real-export certification plan
 
-**Status:** in progress; HTTPS export, Phase B, Phase C, and 2/4-player Phase E gates passed
+**Status:** automated release lanes passed; real Google/SMTP and final
+human-device acceptance remain externally gated
 **Scope:** THNK Core, THNK Matchmaking, THNK Player Profile, the exported
 GDevelop Feature Lab, and live Agora RTC  
 **Primary rule:** development shortcuts and deployment paths are independent
@@ -43,14 +44,14 @@ hard pass/fail rules below.
 
 - The existing Feature Lab already passed real two-client, four-client FFA,
   four-client Teams, and four-client private-lobby browser runs against Ubuntu.
-- The six source extensions currently contain 203 functions: 193 public and 10
-  private/lifecycle/category helpers.
-- The 193 public functions comprise 69 actions, 42 conditions, 32 numeric
-  expressions, 42 string expressions, and 8 expression/condition functions.
-- The current game exercises the principal workflows, often through the same
-  extension runtime used by GDevelop actions. It does not yet provide an
-  auditable claim that all 193 public functions are referenced and behaviorally
-  covered. That coverage artifact is the first deliverable of this plan.
+- The six source extensions now expose 300 public actions, conditions, and
+  expressions. All 300 compile and execute through real GDevelop wrappers in
+  each certified Client lane: Preview, local export, and deployment export
+  (900 wrapper executions).
+- Wrapper execution proves that GDevelop can call every public definition with
+  its declared arguments. Principal workflows additionally have observed
+  runtime assertions. It is not a claim that every possible semantic outcome
+  of all 300 definitions was manually observed.
 - Player Profile defaults to 20 registrations/hour and 10 logins/minute per
   source IP. A ninety-user capacity run cannot be confused with the default
   abuse-policy test. The same build will be run in two isolated configurations:
@@ -296,7 +297,7 @@ microphone sound like.
 - No player is assigned twice, no roster exceeds its rules, no admission token
   admits another player/session/build, and no completed run leaves operational
   queue/session/lobby/claim/capability orphans.
-- All 193 public extension functions have a coverage owner; every function
+- All 300 public extension functions have a coverage owner; every function
   promised as behaviorally covered has an observed assertion, not only an
   export reference.
 - Dev routing, production claiming, solo, dedicated Authority, Profile
@@ -374,7 +375,121 @@ not rewritten as first-attempt passes.
 The automated release decision remains conditional on three deliberately
 separate gates: an audible desktop/Android human-device conversation,
 per-function behavioral observation, and the already-declared off-LAN
-UDP/TURN/NAT deployment matrix. All 193 public functions compile in the Feature
-Lab and have a behavior owner, but the current coverage artifact correctly does
-not convert that compile ownership into 193 runtime assertions. HTTPS tunnels
-prove secure signaling/routing, not production Internet ICE reachability.
+UDP/TURN/NAT deployment matrix. All 300 public functions compile and execute
+through a real GDevelop wrapper in each of the three Client lanes and have a
+behavior owner, but the current coverage artifact correctly does not convert
+wrapper execution into 300 complete semantic runtime assertions. HTTPS tunnels
+prove secure signalling/routing, not production Internet ICE reachability.
+
+## 11. Current manual acceptance checklist
+
+This is the human release checklist after the 2026-07-29 automated run. Record
+each lane independently as `PASS`, `FAIL`, or `BLOCKED`; never copy a result
+from another lane.
+
+### 11.1 Environment and release-lane rules
+
+- [ ] Ubuntu Player Profile (`9400`), Matchmaking (`9300`), Feature Lab
+  (`8080`), Combat Lab (`8081`), and the required dedicated Authorities are
+  healthy before testing.
+- [ ] `app1` serves the deployment Feature Lab, `app2` reaches Player Profile,
+  `app3` reaches Matchmaking, and the assigned `app4`/`app5` Authority URLs
+  support signalling and gameplay. A `502` is a tunnel failure, not a game
+  failure.
+- [ ] A GDevelop Preview starts only the saved Preview project. Preview-only
+  personas may exist in the test template, but no normal export contains their
+  credentials, automatic login, query hooks, or diagnostics.
+- [ ] A local export contains the configured LAN Player Profile and
+  Matchmaking URLs. A deployment export contains the configured hosted URLs.
+  Neither build hard-codes an Authority address: Matchmaking returns the
+  Client-reachable Authority address and signed admission token.
+- [ ] A shipped game implements its own login/register UI by calling the
+  extension actions. The extension does not silently create random users or
+  decide that every Preview should use dummy identity.
+
+### 11.2 Identity, recovery, and profile
+
+- [ ] Register a real email/password account, log out, log in again, reload the
+  game, and verify session restoration without identity crossover.
+- [ ] Confirm duplicate email, duplicate username, malformed email, weak
+  password, unknown account, and wrong password produce safe bounded errors.
+- [ ] Request password reset, receive the SMTP email, open the public reset
+  page, set a new password, prove the old password and old sessions are
+  rejected, and prove the new password works.
+- [ ] Change the player-facing unique username and avatar. Verify first/last or
+  administrative name fields are not exposed to other players.
+- [ ] Verify the new avatar appears in search, friends, requests,
+  conversations, and notifications; reload twice and confirm the versioned
+  persistent cache neither stays stale nor redownloads unnecessarily.
+- [ ] Complete Google Web login from the deployment origin and verify the
+  provider callback returns to the game, restores the cookie-bound session,
+  removes the short callback marker from the URL, and never puts a Player
+  Profile access token in the URL.
+- [ ] Link Google to an already authenticated account and verify a conflicting
+  provider identity cannot take over another account.
+
+Password recovery is `BLOCKED`, not failed, until SMTP sender credentials,
+`THNK_PP_PASSWORD_RESET_PUBLIC_URL`, and mail-provider delivery are configured.
+Google Web is `BLOCKED` until its real client ID/secret, exact callback URI,
+allowed Client origin, provider-console redirect registration, and HTTPS
+tunnels are all active.
+
+### 11.3 Social, messaging, and notifications
+
+- [ ] Search by player-facing username; send, receive, decline, accept, remove,
+  block, and unblock a friend request from separate Clients.
+- [ ] Verify incoming friend-request, acceptance, presence, world-message,
+  direct-message, and unread notifications can drive arbitrary GDevelop UI.
+- [ ] Send world messages in both directions. Every message shows the trusted
+  username/avatar rather than exposing a private canonical player ID, and the
+  moderation policy rejects prohibited content.
+- [ ] Exchange direct messages repeatedly in both directions. New messages
+  appear without `Refresh History`, unread counts change correctly, and a page
+  reload preserves durable history and conversation ordering.
+- [ ] Confirm a blocked player cannot use friendship, presence, or messaging
+  paths to bypass the block.
+
+### 11.4 Matchmaking and authoritative gameplay
+
+- [ ] Two Clients enter Duel. Observe `1/2`, then `2/2`, match found,
+  Authority connection, distinct identities, authoritative movement, overlap
+  scoring, leave, and a clean second match.
+- [ ] Four Clients enter FFA. Observe dynamic `X/4` progress, one shared
+  session, four distinct player slots, authoritative scores, and clean drain.
+- [ ] Four Clients enter Teams. Verify two teams of two, party cohesion,
+  team-owned scoring, and no cross-team or cross-session state.
+- [ ] Exercise queue cancel, reconnect, duplicate submit, Matchmaking
+  disconnect/reconnect, Authority disconnect/reconnect, and stale dev
+  Authority re-registration. No old assignment may delay or capture a new
+  match.
+- [ ] Exercise party create/invite/join/leave and public/private lobby
+  create/join/readiness/start/leave, including rejection of an underfilled
+  lobby.
+- [ ] Verify region probe, ping/jitter/loss, in-session Authority latency, and
+  diagnostic expressions update and do not break matching when optional
+  bandwidth measurement is disabled.
+
+Keyboard movement in the labs is intentionally a discrete test harness. A
+production GDevelop movement controller should sample held input per frame and
+send the resulting authoritative intent; the lab's key-step feel is not a Core
+multiplayer speed multiplier.
+
+### 11.5 Voice and platform lanes
+
+- [ ] On trusted HTTPS, verify two and four real Clients join the same
+  per-session Agora channel, publish/subscribe, mute/unmute, adjust volume,
+  refresh, leave, and rejoin without gameplay failure.
+- [ ] Repeat one audible conversation on two human devices. Synthetic audio
+  provider tests do not replace this gate.
+- [ ] Run Preview, local HTML export, and deployment HTML export separately.
+  Then run the production-orchestrator claim path separately from registered
+  dev Authority routing.
+- [ ] Run explicit solo separately from dedicated Authority, and Player
+  Profile `local-ephemeral-fallback` separately from production
+  `fail-closed`. No shortcut result substitutes for its real path.
+- [ ] Run one client outside the LAN/mobile network and verify public
+  Authority ICE/TURN/NAT reachability. HTTPS signalling alone is insufficient.
+- [ ] After browser release acceptance, build Android and verify native Google
+  login, normal Android login/session restore, matchmaking/gameplay, background
+  and reconnect behavior, avatar cache, and audible Agora. Windows executable
+  packaging is a later independent platform gate.
