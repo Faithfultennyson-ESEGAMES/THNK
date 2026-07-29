@@ -1299,3 +1299,40 @@ voice`).
   `sha256:aabeeb65a6617ef841312ae522403ba724d95b38bb866a7fdc4b9cb10df6da54`
   passed a completed live Duel with Player Profile persistence and a live
   four-player Survival identity-isolation run.
+## 2026-07-29 - Client release-lane certification support
+
+- Confirmed the Core Client remains Authority-URL agnostic in both Preview and
+  exports: Matchmaking returns the Client-reachable Authority URL and signed
+  admission token, and the Client connects directly.
+- The Player Profile integration labs now separate GDevelop Preview,
+  private certification exports, local exports, and deployment exports. Normal
+  exports are structurally checked to contain no dummy credentials, persona
+  auto-login code, query-activated test hooks, or mutation diagnostics.
+- Feature Lab and Combat Lab local exports both compiled through the real
+  GDevelop CLI and passed headless-browser smoke tests against the unchanged
+  Core extension set. Combat's Preview project is now kept separate from all
+  exported builds, preventing an export from changing what GDevelop previews.
+
+## 2026-07-29 - Player avatar versioning and persistent client cache
+
+- Added a server-owned `avatarVersion` to Player Profile identity, friends,
+  search, request, conversation, and notification responses. Migration
+  `0011_avatar_version.sql` initializes existing players at version zero.
+- A changed canonical avatar URL atomically increments the version; saving the
+  same URL keeps it stable. This gives Clients a cheap metadata comparison
+  without downloading an image merely to discover whether it changed.
+- Player Profile extension 0.12.0 now warms a persistent browser/device cache
+  after identity and social loads. Entries are scoped to deployment, immutable
+  player ID, and avatar version. A new version downloads once, deletes the old
+  stored response, and revokes its old object URL.
+- Added public GDevelop cache actions, readiness/error conditions and
+  expressions, plus avatar-version expressions for every player-summary
+  surface. The Feature Lab renders the local cached URL while retaining the
+  canonical URL as a compatibility fallback.
+- Safety bounds require CORS-readable HTTP(S) `image/*` responses of at most
+  2 MiB and cap persistent entries at 256. A platform without Cache Storage
+  continues with the canonical URL rather than breaking login or social UI.
+- Certification passed 73 Player Profile tests, strict TypeScript, production
+  build, real PostgreSQL version transitions, all 300 cross-service GDevelop
+  wrappers in three lanes (900 executions), Feature Lab audit, and release-lane
+  isolation.
