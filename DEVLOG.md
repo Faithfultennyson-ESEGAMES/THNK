@@ -1336,6 +1336,11 @@ voice`).
   build, real PostgreSQL version transitions, all 300 cross-service GDevelop
   wrappers in three lanes (900 executions), Feature Lab audit, and release-lane
   isolation.
+- A maintained real-Chrome certificate then exercised Cache Storage through a
+  local-export Feature Lab against the live Ubuntu Player Profile service. It
+  proved one download per avatar version, persistent reuse after a full page
+  reload, version transitions `0 -> 1 -> 2`, one retained player entry, a local
+  `blob:` display URL, and deletion of the superseded cached version.
 
 ## 2026-07-29 - Cross-service manual release checklist
 
