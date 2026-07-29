@@ -1382,3 +1382,21 @@ voice`).
 - Public HTTPS for the browser and service APIs is live. Outside-LAN gameplay
   still requires its separate ICE/TURN/NAT acceptance gate; HTTPS signalling
   alone is not counted as proof of public Authority reachability.
+
+## 2026-07-29 - Live Google Web OAuth configuration
+
+- Validated the downloaded Google Web OAuth client without logging its secret.
+  Its provider registration contains the exact production Client origin
+  `https://app1.solarcal.xyz` and callback
+  `https://app2.solarcal.xyz/auth/google/callback`.
+- Added a secret-safe installation utility that validates those provider
+  entries, makes a timestamped environment backup, atomically installs the
+  three Player Profile OAuth variables, and restricts both configuration files
+  to the service account.
+- Installed the credentials on Ubuntu and restarted only Player Profile. Its
+  readiness check remained healthy.
+- The public authorization start endpoint returned `302` to
+  `accounts.google.com/o/oauth2/v2/auth` with the configured callback, a
+  nonempty state binding, and only `openid email profile` scopes. Interactive
+  Google account selection, consent, callback completion, and account-linking
+  conflict behavior remain human acceptance steps.
