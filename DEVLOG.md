@@ -1366,3 +1366,19 @@ voice`).
   their external credentials/provider configuration and the HTTPS tunnels are
   active; neither is recorded as a product-code failure or a passing provider
   test.
+
+## 2026-07-29 - Production Feature Lab voice UI deployment
+
+- Added and certified visible session-voice controls in the Player Profile
+  Feature Lab while leaving the Core voice implementation and gameplay failure
+  isolation unchanged.
+- Rebuilt the strict deployment-export lane against `app2` and `app3`, proved
+  Preview personas and test hooks were absent, and deployed it to the Ubuntu
+  `app1` service with a timestamped rollback.
+- A fresh real Chrome session authenticated a production-lane account,
+  connected to Matchmaking, opened Voice, and verified all controls, secure
+  context, the Agora runtime, and zero fatal console errors. The pre-admission
+  state correctly remained `WAITING_FOR_ADMISSION`.
+- Public HTTPS for the browser and service APIs is live. Outside-LAN gameplay
+  still requires its separate ICE/TURN/NAT acceptance gate; HTTPS signalling
+  alone is not counted as proof of public Authority reachability.
