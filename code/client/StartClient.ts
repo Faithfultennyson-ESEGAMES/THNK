@@ -12,11 +12,38 @@ import {
 import { THNKClientContext } from "client/THNKClientContext";
 import { loadScene } from "utils/LoadScene";
 import { startConnectionRequestRetry } from "client/ConnectionRequestRetry";
+import { resetAuthorityLatency } from "client/AuthorityLatency";
 
 const logger = new gdjs.Logger("THNK - Client");
+let activeAdapter: ClientAdapter | undefined;
+let startupGeneration = 0;
+let stopStartup: (() => void) | undefined;
+
+const clearStartup = () => {
+  stopStartup?.();
+  stopStartup = undefined;
+};
+
 const fail = (reason: string) => {
+  clearStartup();
+  activeAdapter = undefined;
   setConnectionState("failed", reason);
   logger.error("Connection failed: " + reason);
+};
+
+export const stopClient = (runtimeScene: gdjs.RuntimeScene): boolean => {
+  const adapter = runtimeScene.thnkClient?.adapter || activeAdapter;
+  startupGeneration += 1;
+  clearStartup();
+  if (runtimeScene.thnkClient) delete runtimeScene.thnkClient;
+  if (adapter) {
+    adapter.markPendingMessagesAsRead();
+    adapter.close();
+  }
+  activeAdapter = undefined;
+  resetAuthorityLatency();
+  setConnectionState("disconnected", "client_stopped");
+  return Boolean(adapter);
 };
 
 export const startClient = async (
@@ -35,14 +62,22 @@ export const startClient = async (
     );
     return;
   }
+  if (activeAdapter && activeAdapter !== adapter) activeAdapter.close();
+  activeAdapter = adapter;
+  const generation = ++startupGeneration;
+  clearStartup();
   setConnectionState("connecting");
-  const sceneStack = runtimeScene.getGame().getSceneStack();
   try {
     await adapter.prepare(runtimeScene);
   } catch {
+    if (generation !== startupGeneration) return;
     adapter.close();
     fail("Adapter crashed while connecting to the server!");
     // Abort client startup
+    return;
+  }
+  if (generation !== startupGeneration) {
+    adapter.close();
     return;
   }
 
@@ -50,12 +85,12 @@ export const startClient = async (
   const stopConnectionRequestRetry = startConnectionRequestRetry(adapter);
 
   const intervalID = setInterval(async () => {
+    if (generation !== startupGeneration) return;
     const message = (adapter.getPendingMessages() as ServerMessage[]).shift();
     if (!message) return;
     const messageType = message.contentType();
     if (messageType === ServerMessageContent.ConnectionStartMessage) {
-      clearInterval(intervalID);
-      stopConnectionRequestRetry();
+      clearStartup();
       const connectionStartMessage = message.content(
         new ConnectionStartMessage()
       ) as ConnectionStartMessage;
@@ -78,4 +113,8 @@ export const startClient = async (
       setConnectionState("connected");
     }
   }, 100);
+  stopStartup = () => {
+    clearInterval(intervalID);
+    stopConnectionRequestRetry();
+  };
 };

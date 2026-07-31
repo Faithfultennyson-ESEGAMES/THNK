@@ -9,7 +9,7 @@ export {
   getConnectionError,
   getConnectionState,
 } from "client/ClientConnectionState";
-export { startClient } from "client/StartClient";
+export { startClient, stopClient } from "client/StartClient";
 export {
   authorityLatencyUpdated,
   getAuthorityLatencyMs,

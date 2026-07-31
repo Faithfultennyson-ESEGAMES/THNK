@@ -39,6 +39,11 @@ const {
   DevAuthorityRegistration,
 } = require("./dev-authority-registration.cjs");
 const {
+  delayAuthorityPoll,
+  startAuthorityHeartbeat,
+  withAuthoritySessionTimeout,
+} = require("./authority-poll-liveness.cjs");
+const {
   DevEmptySessionController,
 } = require("./dev-empty-session.cjs");
 const authorityClient = sessionManager.authorityClient;
@@ -59,6 +64,15 @@ const devAuthorityRegistration =
 const shutdownTimeout = Number(process.env.THNK_SHUTDOWN_TIMEOUT_MS || 30_000);
 const devEmptySessionTimeout = Number(
   process.env.THNK_DEV_AUTO_END_EMPTY_MS || 0
+);
+// A production Authority is normally started per session by an orchestrator.
+// When one is supervised instead (systemd, a container restart policy), it must
+// end and exit once its session empties, or it serves a single match and then
+// sits idle while every later roster times out waiting for it. This is the
+// production-safe counterpart to THNK_DEV_AUTO_END_EMPTY_MS, which stays
+// restricted to a registered development Authority.
+const exitWhenEmptyTimeout = Number(
+  process.env.THNK_AUTHORITY_EXIT_WHEN_EMPTY_MS || 0
 );
 // GDevelop drives its authoritative event loop with requestAnimationFrame.
 // Keeping the renderer visible on the host's virtual display prevents Chromium
@@ -87,6 +101,19 @@ if (
 if (devEmptySessionTimeout > 0 && !devAuthorityRegistration)
   throw new Error(
     "THNK_DEV_AUTO_END_EMPTY_MS is allowed only for a registered development Authority."
+  );
+if (
+  !Number.isInteger(exitWhenEmptyTimeout) ||
+  exitWhenEmptyTimeout < 0 ||
+  (exitWhenEmptyTimeout > 0 &&
+    (exitWhenEmptyTimeout < 1_000 || exitWhenEmptyTimeout > 300_000))
+)
+  throw new Error(
+    "THNK_AUTHORITY_EXIT_WHEN_EMPTY_MS must be 0 or an integer from 1000 to 300000."
+  );
+if (exitWhenEmptyTimeout > 0 && devEmptySessionTimeout > 0)
+  throw new Error(
+    "Configure either THNK_DEV_AUTO_END_EMPTY_MS or THNK_AUTHORITY_EXIT_WHEN_EMPTY_MS, not both."
   );
 if (
   !Number.isInteger(startupTimeout) ||
@@ -142,12 +169,6 @@ const authorityIdentity = {
   clientBuildId: identity.clientBuildId,
   protocolVersion: identity.protocolVersion,
 };
-
-const delay = (milliseconds) =>
-  new Promise((resolve) => {
-    const timer = setTimeout(resolve, milliseconds);
-    timer.unref?.();
-  });
 
 const waitForPort = () =>
   new Promise((resolve, reject) => {
@@ -276,10 +297,9 @@ const startOutboundAuthority = async () => {
       logger: structuredLogger,
     });
     await registration.register();
-    authorityHeartbeatTimer = setInterval(() => {
+    authorityHeartbeatTimer = startAuthorityHeartbeat(() => {
       void registration.heartbeat();
     }, 15_000);
-    authorityHeartbeatTimer.unref?.();
   }
   structuredLogger.info("authority.pull_ready", {
     authorityId: identity.authorityId,
@@ -294,16 +314,38 @@ const startOutboundAuthority = async () => {
       structuredLogger.warn("authority.claim_failed", {
         errorCode: error?.code || "matchmaking_unavailable",
       });
-      await delay(1_000);
+      await delayAuthorityPoll(1_000);
       continue;
     }
     if (!session) {
-      await delay(250);
+      await delayAuthorityPoll(250);
       continue;
     }
-    await sessionManager.prepareSession(session);
-    await startAuthority();
-    await authorityClient.ready(session.sessionId);
+    // Only claim() was guarded before. A throw from any of the three calls
+    // below escaped this loop and rejected startOutboundAuthority(), leaving
+    // the process alive but no longer polling and never exiting, so systemd
+    // never restarted it. Matchmaking then answered every roster with
+    // authority_ready_timeout and re-queued it, which players see as a match
+    // filling to full and dropping back to searching, forever.
+    try {
+      await withAuthoritySessionTimeout(async () => {
+        await sessionManager.prepareSession(session);
+        await startAuthority();
+        await authorityClient.ready(session.sessionId);
+      });
+    } catch (error) {
+      structuredLogger.error("authority.session_start_failed", {
+        sessionId: session.sessionId,
+        authorityId: identity.authorityId,
+        errorCode: error?.code || "session_start_failed",
+        errorMessage: error?.message,
+      });
+      // This runtime serves one session per process, so a half-started
+      // session cannot be recovered in place. Exiting hands the next roster
+      // to a clean restart instead of stranding the queue on a dead poller.
+      shutdown("session_start_failed");
+      return;
+    }
     structuredLogger.info("authority.session_ready", {
       sessionId: session.sessionId,
       authorityId: identity.authorityId,
@@ -318,8 +360,10 @@ for (const signal of ["SIGINT", "SIGTERM"])
 
 sessionManager.on("maximum-duration", () => shutdown("maximum_duration"));
 devEmptySessionController = new DevEmptySessionController({
-  enabled: devAuthorityRegistration && devEmptySessionTimeout > 0,
-  timeoutMs: devEmptySessionTimeout,
+  enabled:
+    (devAuthorityRegistration && devEmptySessionTimeout > 0) ||
+    exitWhenEmptyTimeout > 0,
+  timeoutMs: devEmptySessionTimeout || exitWhenEmptyTimeout,
   sessionManager,
   shutdown,
   logger: structuredLogger,

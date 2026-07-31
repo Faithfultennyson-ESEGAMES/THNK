@@ -1438,3 +1438,62 @@ voice`).
 - Redeployed Player Profile and the versioned Feature Lab with independent
   rollback snapshots. Live Chrome passed collision recovery, callback cleanup,
   normal session restoration, Matchmaking, Voice, and fatal-error checks.
+
+## 2026-07-29 - Agora voice teardown races
+
+- Fixed the voice defect behind the production console errors. Leaving a match
+  closed the Agora client while its join was still in flight, which aborted the
+  handshake (`WS_ABORT: LEAVE`) and raced `publish` against a closing peer
+  connection. A teardown now leaves an in-flight join alone and the join
+  releases its own client through a cancellation check, so gameplay still
+  leaves immediately without ever aborting the handshake.
+- Cancellation is decided by client identity as well as generation, so a
+  teardown started by anything other than a new admission is seen too.
+  `publish` and `subscribe` additionally verify `connectionState`, since Agora
+  rejects both outright once the peer connection begins closing and logs its
+  own error before ours can run.
+- Gave cancelled joins a single release path. Previously a join cancelled
+  during microphone setup leaked a joined client or an open microphone track.
+- Stopped stale sessions reporting into the current one: `setSelfMuted` no
+  longer reports a mute failure for a track closed by an intentional teardown,
+  and the roster handlers no longer let a superseded client evict presence,
+  volume, or speaking state belonging to the live session.
+- Added five regression tests covering each race: an in-flight handshake is not
+  aborted, a closing peer connection is never published to or subscribed to, a
+  torn-down mute reports no error, and a superseded admission cannot evict
+  roster state. All 119 tests across 28 suites and strict typecheck pass.
+- Rebuilt the extensions and verified the fix reached the deployment export.
+  Four-browser live certification reported zero Agora errors on every client.
+
+## 2026-07-30 - Authority liveness, recycling, and WebRTC transport configuration
+
+- Bounded the Authority's session start. `startOutboundAuthority` guarded only
+  `claim()`; the three calls that actually start a session were unguarded, so a
+  hang left the process alive, no longer polling, and never exiting, which meant
+  its supervisor never restarted it. Observed live three times in one hour: the
+  unit reported `active` for minutes while Matchmaking answered every roster
+  with `authority_ready_timeout`. `withAuthoritySessionTimeout` turns a hang
+  into an ordinary failure and the failure path exits so the supervisor restarts
+  into a clean state.
+- Added `THNK_AUTHORITY_EXIT_WHEN_EMPTY_MS`, the production-safe counterpart to
+  the development-only `THNK_DEV_AUTO_END_EMPTY_MS`. An Authority serves one
+  session per process; a supervised production Authority must end and exit when
+  its session empties or it serves a single match and then sits idle while every
+  later roster times out. Configuring both is rejected, and the development
+  variable stays restricted to a registered development Authority.
+- Added an `iceServers` and `portRange` configuration point. The geckos server
+  was constructed with neither, so there was nowhere to put a STUN server for an
+  Authority behind NAT or a TURN relay for players whose network blocks outbound
+  UDP. `resolveIceConfiguration` validates urls as stun/stuns/turn/turns,
+  rejects a relay missing half its credentials at startup rather than letting it
+  fail later as an opaque ICE error, and rejects a half-specified or impossible
+  port range.
+- Closed the remaining Agora teardown surface. `publish` was guarded against a
+  closing peer connection but `subscribe` was not, so a remote player publishing
+  audio at the moment a roster left produced
+  `Cannot subscribe remote user when peerConnection disconnected`.
+- All 130 tests across 29 suites and strict typecheck pass. Rebuilt and
+  validated the Authority bundle; its content hash changes with the runtime, so
+  the new `serverBuildId` had to be reflected in both Matchmaking config blocks.
+  A live four-browser certification then passed 16 of 16 checks with no
+  session-start failure recorded.

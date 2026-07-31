@@ -87,6 +87,8 @@ export class AgoraSessionVoice {
   private localTrack: ILocalAudioTrack | undefined;
   private grant: CompleteVoiceGrant | undefined;
   private joinPromise: Promise<void> | undefined;
+  private joinGeneration = -1;
+  private joinOwnedClient: IAgoraRTCClient | undefined;
   private refreshPromise: Promise<void> | undefined;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   private generation = 0;
@@ -157,6 +159,7 @@ export class AgoraSessionVoice {
     this.playerByUid.clear();
     this.uidByPlayer.clear();
     this.state = "DISCONNECTED";
+    this.lastError = "";
   }
 
   async join(): Promise<void> {
@@ -167,12 +170,39 @@ export class AgoraSessionVoice {
     }
     if (this.state === "CONNECTED" || this.state === "CONNECTED_LISTEN_ONLY")
       return;
-    if (this.joinPromise) return this.joinPromise;
+    // A join left over from a superseded generation is already unwinding, so
+    // reusing its promise would report the cancelled attempt as this one.
+    if (this.joinPromise && this.joinGeneration === this.generation)
+      return this.joinPromise;
     const generation = this.generation;
-    this.joinPromise = this.joinInternal(generation).finally(() => {
-      this.joinPromise = undefined;
+    this.joinGeneration = generation;
+    const attempt = this.joinInternal(generation).finally(() => {
+      if (this.joinGeneration === generation) this.joinPromise = undefined;
     });
-    return this.joinPromise;
+    this.joinPromise = attempt;
+    return attempt;
+  }
+
+  // A join is cancelled once gameplay moves on (new generation) or once a
+  // teardown has already released this client.
+  private isCancelled(generation: number, client: IAgoraRTCClient) {
+    return generation !== this.generation || this.client !== client;
+  }
+
+  // Releasing what a cancelled join built is best-effort: the caller has
+  // already moved on, so an Agora complaint here is not a voice failure.
+  private async releaseCancelledJoin(
+    client: IAgoraRTCClient,
+    track: ILocalAudioTrack | undefined
+  ) {
+    if (this.localTrack === track) this.localTrack = undefined;
+    if (this.client === client) this.client = undefined;
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    this.refreshTimer = undefined;
+    try {
+      track?.close();
+      await client.leave();
+    } catch {}
   }
 
   private async joinInternal(generation: number): Promise<void> {
@@ -180,60 +210,88 @@ export class AgoraSessionVoice {
     if (!grant) return;
     this.state = "JOINING";
     this.lastError = "";
+    const client = this.sdk.createClient({ mode: "rtc", codec: "vp8" });
+    let track: ILocalAudioTrack | undefined;
+    // Marks this client as owned by an in-flight join, so a concurrent
+    // teardown leaves the handshake alone instead of aborting it.
+    this.joinOwnedClient = client;
+    this.client = client;
     try {
-      const client = this.sdk.createClient({ mode: "rtc", codec: "vp8" });
-      this.client = client;
       this.registerClientEvents(client, generation);
       await client.join(grant.appId, grant.channel, grant.token, grant.uid);
-      if (generation !== this.generation) {
-        await client.leave();
-        return;
-      }
+      if (this.isCancelled(generation, client))
+        return await this.releaseCancelledJoin(client, track);
       client.enableAudioVolumeIndicator();
       this.state = "CONNECTED_LISTEN_ONLY";
       this.scheduleRefresh();
       try {
-        const track = await this.sdk.createMicrophoneAudioTrack();
-        if (generation !== this.generation) {
-          track.close();
-          return;
-        }
+        track = await this.sdk.createMicrophoneAudioTrack();
+        if (this.isCancelled(generation, client))
+          return await this.releaseCancelledJoin(client, track);
         this.localTrack = track;
         await track.setMuted(this.mutedSelf);
+        if (this.isCancelled(generation, client))
+          return await this.releaseCancelledJoin(client, track);
+        // Agora rejects publish outright once the peer connection starts
+        // closing, so asking first keeps a teardown we did not initiate from
+        // surfacing as an SDK error on the console.
+        if (client.connectionState !== "CONNECTED")
+          return await this.releaseCancelledJoin(client, track);
         await client.publish(track);
+        if (this.isCancelled(generation, client))
+          return await this.releaseCancelledJoin(client, track);
         this.state = "CONNECTED";
       } catch (error) {
+        if (this.isCancelled(generation, client))
+          return await this.releaseCancelledJoin(client, track);
         this.setError(errorCode(error, "microphone_unavailable"));
         this.state = "CONNECTED_LISTEN_ONLY";
       }
     } catch (error) {
+      // Agora rejects an in-flight join with WS_ABORT when gameplay leaves.
+      // The generation change marks that as intentional cancellation, not a
+      // voice failure that should leak into the next scene/session.
+      if (this.isCancelled(generation, client))
+        return await this.releaseCancelledJoin(client, track);
       this.setError(errorCode(error, "voice_join_failed"), "FAILED");
-      await this.leaveInternal(false);
+      await this.releaseCancelledJoin(client, track);
       if (this.grant) this.state = "FAILED";
+    } finally {
+      if (this.joinOwnedClient === client) this.joinOwnedClient = undefined;
     }
   }
 
   private registerClientEvents(client: IAgoraRTCClient, generation: number) {
     client.on("user-published", async (user, mediaType) => {
-      if (generation !== this.generation || mediaType !== "audio") return;
+      if (this.isCancelled(generation, client) || mediaType !== "audio") return;
+      // Agora rejects a subscribe once the peer connection is closing, and
+      // logs its own error before this catch runs. A remote player publishing
+      // as we leave is ordinary, so the connection is checked first.
+      if (client.connectionState !== "CONNECTED") return;
       try {
         await client.subscribe(user, "audio");
         this.remoteUsers.set(String(user.uid), user);
         user.audioTrack?.play();
         this.applyRemoteSettings(String(user.uid));
       } catch (error) {
+        if (this.isCancelled(generation, client)) return;
         this.setError(errorCode(error, "voice_subscribe_failed"));
       }
     });
     client.on("user-unpublished", (user, mediaType) => {
+      if (generation !== this.generation) return;
       if (mediaType === "audio") this.remoteUsers.delete(String(user.uid));
     });
+    // A superseded client keeps emitting for the same channel and UIDs, so
+    // these must not evict roster state belonging to the current session.
     client.on("user-left", (user) => {
+      if (generation !== this.generation) return;
       const uid = String(user.uid);
       this.remoteUsers.delete(uid);
       this.volumeLevels.delete(uid);
     });
     client.on("volume-indicator", (volumes) => {
+      if (generation !== this.generation) return;
       for (const volume of volumes)
         this.volumeLevels.set(String(volume.uid), volume.level);
     });
@@ -328,6 +386,7 @@ export class AgoraSessionVoice {
     this.autoJoin = false;
     ++this.generation;
     await this.leaveInternal(true);
+    this.lastError = "";
   }
 
   private async leaveInternal(manual: boolean): Promise<void> {
@@ -339,6 +398,14 @@ export class AgoraSessionVoice {
     this.client = undefined;
     this.remoteUsers.clear();
     this.volumeLevels.clear();
+    // Closing a client whose join has not settled aborts Agora's handshake
+    // (WS_ABORT: LEAVE) and races publish against a closing peer connection.
+    // The join now sees this teardown through its own cancellation check and
+    // releases the client itself, so gameplay never waits on the handshake.
+    if (client && client === this.joinOwnedClient) {
+      this.state = manual ? "DISCONNECTED" : this.state;
+      return;
+    }
     try {
       track?.close();
       await client?.leave();
@@ -350,9 +417,15 @@ export class AgoraSessionVoice {
 
   async setSelfMuted(muted: boolean): Promise<void> {
     this.mutedSelf = muted;
+    const generation = this.generation;
+    const track = this.localTrack;
+    if (!track) return;
     try {
-      await this.localTrack?.setMuted(muted);
+      await track.setMuted(muted);
     } catch (error) {
+      // A track closed by an intentional teardown rejects here; that is the
+      // teardown finishing, not a mute the player should be told failed.
+      if (generation !== this.generation || this.localTrack !== track) return;
       this.setError(errorCode(error, "voice_mute_failed"));
     }
   }

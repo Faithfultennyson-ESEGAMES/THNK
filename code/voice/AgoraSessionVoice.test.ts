@@ -18,6 +18,7 @@ const { AgoraSessionVoice } =
 
 class FakeClient {
   handlers = new Map<string, ((...arguments_: any[]) => unknown)[]>();
+  connectionState = "CONNECTED";
   join = jest.fn(async () => "alice-uid");
   leave = jest.fn(async () => {});
   publish = jest.fn(async () => {});
@@ -244,4 +245,148 @@ test("gameplay disconnect leaves Agora and clears the previous admission", async
   await voice.join();
   expect(voice.getConnectionState()).toBe("WAITING_FOR_ADMISSION");
   expect(voice.getLastError()).toBe("voice_admission_required");
+});
+
+test("leaving gameplay during an in-flight Agora join is an intentional cancellation", async () => {
+  const { voice, client } = makeVoice();
+  let rejectJoin!: (error: Error) => void;
+  client.join.mockImplementation(
+    () =>
+      new Promise<string>((_resolve, reject) => {
+        rejectJoin = reject;
+      })
+  );
+
+  const admission = voice.handleAdmission(grant());
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(client.join).toHaveBeenCalled();
+
+  await voice.handleGameplayDisconnect();
+  rejectJoin(Object.assign(new Error("LEAVE"), { code: "WS_ABORT" }));
+  await admission;
+
+  expect(voice.getConnectionState()).toBe("DISCONNECTED");
+  expect(voice.getLastError()).toBe("");
+});
+
+test("leaving gameplay never aborts an Agora handshake that is still in flight", async () => {
+  const { voice, client } = makeVoice();
+  let resolveJoin!: (uid: string) => void;
+  client.join.mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        resolveJoin = resolve;
+      })
+  );
+
+  const admission = voice.handleAdmission(grant());
+  while (!client.join.mock.calls.length)
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+  await voice.handleGameplayDisconnect();
+  // Closing the client here is what makes Agora log WS_ABORT: LEAVE and
+  // roll the join back; gameplay must still not wait for the handshake.
+  expect(client.leave).not.toHaveBeenCalled();
+  expect(voice.getConnectionState()).toBe("DISCONNECTED");
+
+  resolveJoin("alice-uid");
+  await admission;
+
+  expect(client.leave).toHaveBeenCalled();
+  expect(client.publish).not.toHaveBeenCalled();
+  expect(voice.getConnectionState()).toBe("DISCONNECTED");
+  expect(voice.getLastError()).toBe("");
+});
+
+test("a peer connection that starts closing during microphone setup is never published to", async () => {
+  const { voice, client, localTrack } = makeVoice();
+  let finishMuted!: () => void;
+  localTrack.setMuted.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finishMuted = resolve;
+      })
+  );
+
+  const admission = voice.handleAdmission(grant());
+  while (!localTrack.setMuted.mock.calls.length)
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+  client.connectionState = "DISCONNECTING";
+  finishMuted();
+  await admission;
+
+  expect(client.publish).not.toHaveBeenCalled();
+  expect(localTrack.close).toHaveBeenCalled();
+  expect(voice.getLastError()).toBe("");
+});
+
+test("muting a track closed by an intentional teardown reports no voice error", async () => {
+  const { voice, localTrack } = makeVoice();
+  await voice.handleAdmission(grant());
+  let rejectMuted!: (error: Error) => void;
+  localTrack.setMuted.mockImplementation(
+    () =>
+      new Promise<void>((_resolve, reject) => {
+        rejectMuted = reject;
+      })
+  );
+
+  const muting = voice.setSelfMuted(true);
+  await voice.handleGameplayDisconnect();
+  rejectMuted(new Error("TRACK_IS_DISABLED"));
+  await muting;
+
+  expect(voice.getLastError()).toBe("");
+  expect(voice.isSelfMuted()).toBe(true);
+});
+
+test("a superseded admission cannot evict roster state from the current session", async () => {
+  const { voice, client } = makeVoice();
+  await voice.handleAdmission(grant());
+  const remoteTrack = { play: jest.fn(), setVolume: jest.fn() };
+  await client.emit("user-published", { uid: "bob-uid", audioTrack: remoteTrack }, "audio");
+  await client.emit("volume-indicator", [{ uid: "bob-uid", level: 42 }]);
+  expect(voice.isSpeaking("bob")).toBe(true);
+
+  ++(voice as any).generation;
+  await client.emit("user-left", { uid: "bob-uid" });
+
+  expect(voice.isSpeaking("bob")).toBe(true);
+});
+
+test("leaving while microphone setup is pending never publishes on a closed connection", async () => {
+  const { voice, client, localTrack } = makeVoice();
+  let finishMuted!: () => void;
+  localTrack.setMuted.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finishMuted = resolve;
+      })
+  );
+
+  const admission = voice.handleAdmission(grant());
+  while (!localTrack.setMuted.mock.calls.length)
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+  await voice.handleGameplayDisconnect();
+  finishMuted();
+  await admission;
+
+  expect(client.publish).not.toHaveBeenCalled();
+  expect(voice.getConnectionState()).toBe("DISCONNECTED");
+  expect(voice.getLastError()).toBe("");
+});
+
+test("a remote player publishing as the connection closes is not subscribed to", async () => {
+  const { voice, client } = makeVoice();
+  await voice.handleAdmission(grant());
+  const remoteTrack = { play: jest.fn(), setVolume: jest.fn() };
+
+  client.connectionState = "DISCONNECTING";
+  await client.emit("user-published", { uid: "bob-uid", audioTrack: remoteTrack }, "audio");
+
+  expect(client.subscribe).not.toHaveBeenCalled();
+  expect(remoteTrack.play).not.toHaveBeenCalled();
+  expect(voice.getLastError()).toBe("");
 });

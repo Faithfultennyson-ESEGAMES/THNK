@@ -1,5 +1,9 @@
 let geckosModule;
 const { AdmissionError } = require("./jwt-verifier.cjs");
+const {
+  relayCredentialsAreIgnored,
+  resolveIceConfiguration,
+} = require("./ice-configuration.cjs");
 const { sessionManager } = require("./session-manager.cjs");
 const { structuredLogger } = require("./structured-logger.cjs");
 
@@ -16,7 +20,25 @@ exports.loadGeckos = async () => {
 
 exports.createServer = (options) => {
   if (!geckosModule) throw new Error("Geckos was not loaded before use.");
-  const bridgeOptions = { ...options };
+  // Deployment-level WebRTC transport settings are merged here, in the process
+  // that can see the environment. The caller keeps deciding gameplay options.
+  const iceConfiguration = resolveIceConfiguration();
+  const bridgeOptions = { ...iceConfiguration, ...options };
+  if (iceConfiguration.iceServers || iceConfiguration.portRange)
+    structuredLogger.info("geckos.transport_configured", {
+      iceServerCount: iceConfiguration.iceServers?.length ?? 0,
+      relayConfigured: Boolean(
+        iceConfiguration.iceServers?.some((server) =>
+          /^turns?:/.test(String(server.urls))
+        )
+      ),
+      // geckos forwards only the url to node-datachannel, so the Authority
+      // cannot authenticate to a relay even though the browser side can.
+      relayCredentialsIgnored: relayCredentialsAreIgnored(
+        iceConfiguration.iceServers
+      ),
+      portRange: iceConfiguration.portRange,
+    });
   if (sessionManager.enabled) {
     bridgeOptions.authorization = async (authorization) => {
       try {

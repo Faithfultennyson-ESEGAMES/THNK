@@ -8,7 +8,7 @@ import { setConnectionState } from "client/ClientConnectionState";
     warn() {}
   },
 };
-const { startClient } =
+const { startClient, stopClient } =
   require("client/StartClient") as typeof import("client/StartClient");
 
 class CountingAdapter extends ClientAdapter {
@@ -71,4 +71,28 @@ test("ignores a duplicate client start while the first connection is pending", a
   rejectFirst(new Error("test cleanup"));
   await firstStart;
   setConnectionState("disconnected");
+});
+
+test("explicitly stopping a pending client closes it and stops connection retries", async () => {
+  jest.useFakeTimers();
+  setConnectionState("disconnected");
+  class CloseableAdapter extends CountingAdapter {
+    closeCalls = 0;
+    close(): void {
+      this.closeCalls++;
+    }
+  }
+  const adapter = new CloseableAdapter();
+  const runtimeScene = {
+    getGame: () => ({ getSceneStack: () => ({}) }),
+  } as unknown as gdjs.RuntimeScene;
+
+  await startClient(runtimeScene, adapter);
+  expect(adapter.sentMessages).toBe(1);
+  expect(stopClient(runtimeScene)).toBe(true);
+  expect(adapter.closeCalls).toBe(1);
+
+  jest.advanceTimersByTime(2_000);
+  expect(adapter.sentMessages).toBe(1);
+  jest.useRealTimers();
 });

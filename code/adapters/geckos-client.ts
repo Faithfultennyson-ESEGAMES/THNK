@@ -5,6 +5,7 @@ import {
   geckosConnectionEndpoint,
   normalizeGeckosEndpoint,
 } from "adapters/geckos-client-endpoint";
+import { resolveClientIceServers } from "adapters/ice-servers";
 import { sessionVoice, type VoiceGrant } from "voice/AgoraSessionVoice";
 const logger = new gdjs.Logger("THNK - Geckos.io Adapter");
 
@@ -36,10 +37,15 @@ THNK.GeckosClientAdapter = class GeckosClientAdapter extends (
   }
 
   async prepare(): Promise<void> {
+    // A Client that offers no ICE servers can only ever use candidates it can
+    // see directly, which is why a player outside the Authority's own network
+    // connects successfully at the signalling layer and then never completes.
+    const iceServers = resolveClientIceServers();
     this.connection = geckos({
       ...geckosConnectionEndpoint({ url: this.ip, port: this.port }),
       label: "THNK",
       authorization: this.authorization,
+      ...(iceServers ? { iceServers } : {}),
     });
     await new Promise<void>((resolve, reject) =>
       this.connection!.onConnect((error) => {
